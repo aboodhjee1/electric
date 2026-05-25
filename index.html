@@ -387,10 +387,37 @@
     .btn-primary { padding: 8px 20px; border: none; border-radius: 9px; background: #2563eb; color: #fff; font-size: 0.84rem; font-weight: 700; cursor: pointer; }
     .btn-primary:hover { background: #1d4ed8; }
 
-    /* ── HEADER MANAGE BUTTON ── */
-    .h-manage { padding: 6px 14px; border: 1.5px solid #e2e8f0; border-radius: 8px; background: #fff; color: #475569; font-size: 0.78rem; font-weight: 600; cursor: pointer; margin-left: auto; }
+    /* ── HEADER BUTTONS ── */
+    .h-lang   { padding: 6px 14px; border: 1.5px solid #c7d2fe; border-radius: 8px; background: #eef2ff; color: #4338ca; font-size: 0.78rem; font-weight: 700; cursor: pointer; margin-left: auto; }
+    .h-lang:hover { background: #e0e7ff; }
+    .h-manage { padding: 6px 14px; border: 1.5px solid #e2e8f0; border-radius: 8px; background: #fff; color: #475569; font-size: 0.78rem; font-weight: 600; cursor: pointer; margin-left: 8px; }
     .h-manage:hover { background: #f1f5f9; }
-    .h-reset { margin-left: 8px; }
+    .h-reset  { margin-left: 8px; }
+
+    /* ── RTL (Arabic mode) ── */
+    [dir="rtl"] .h-lang   { margin-left: 0; margin-right: auto; }
+    [dir="rtl"] .h-manage { margin-left: 0; margin-right: 8px; }
+    [dir="rtl"] .h-reset  { margin-left: 0; margin-right: 8px; }
+    [dir="rtl"] .add-month-btn { margin-left: 0; margin-right: auto; }
+    [dir="rtl"] .apt-block-header { flex-direction: row-reverse; }
+    [dir="rtl"] .ov-top { flex-direction: row-reverse; }
+    [dir="rtl"] .h-text { text-align: right; }
+    [dir="rtl"] table.bt thead th { text-align: right; }
+    [dir="rtl"] table.bt tbody td { text-align: right; }
+    [dir="rtl"] table.bt tbody td:last-child { text-align: left; }
+    [dir="rtl"] table.tot thead th { text-align: left; }
+    [dir="rtl"] table.tot thead th:first-child { text-align: right; }
+    [dir="rtl"] table.tot tbody td { text-align: left; }
+    [dir="rtl"] table.tot tbody td:first-child { text-align: right; }
+    [dir="rtl"] table.tot tfoot td { text-align: left; }
+    [dir="rtl"] table.tot tfoot td:first-child { text-align: right; }
+    [dir="rtl"] .ov-stat { flex-direction: row-reverse; }
+    [dir="rtl"] .tier-line { flex-direction: row-reverse; }
+    [dir="rtl"] .tier-line .trate { margin-right: auto; }
+    [dir="rtl"] .prev-tier { flex-direction: row-reverse; }
+    [dir="rtl"] .prev-total { flex-direction: row-reverse; }
+    [dir="rtl"] .cost-main, [dir="rtl"] .cost-paid, [dir="rtl"] .cost-diff { text-align: right; }
+    [dir="rtl"] .modal-footer { flex-direction: row-reverse; }
 
     /* ── APARTMENT MANAGER MODAL ── */
     #apt-mgr-overlay { position: fixed; inset: 0; background: rgba(15,23,42,.45); display: flex; align-items: center; justify-content: center; z-index: 1001; opacity: 0; pointer-events: none; transition: opacity .2s; }
@@ -522,6 +549,7 @@
       .tot-pill .tp-val { font-size: 1.15rem; }
 
       /* Apt manager on mobile */
+      .h-lang   { font-size: 0.72rem; padding: 7px 10px; }
       .h-manage { font-size: 0.72rem; padding: 7px 10px; }
       #apt-mgr-overlay { align-items: flex-end; }
       #apt-mgr { width: 100% !important; max-width: 100% !important; border-radius: 20px 20px 0 0; max-height: 92vh; transform: translateY(100%) !important; transition: transform .28s cubic-bezier(.32,1,.23,1); }
@@ -536,51 +564,52 @@
 <header>
   <div class="h-icon">⚡</div>
   <div class="h-text">
-    <h1>Electric Bill Dashboard — 2026</h1>
-    <p>Jordan Electricity Distribution · Tiered Rate Analysis</p>
+    <h1 id="h-title">Electric Bill Dashboard — 2026</h1>
+    <p id="h-sub">Jordan Electricity Distribution · Tiered Rate Analysis</p>
   </div>
-  <button class="h-manage" onclick="openAptManager()">⚙ Apartments</button>
-  <button class="h-reset" onclick="resetToDefaults()">↺ Reset</button>
+  <button id="lang-toggle-btn" class="h-lang" onclick="toggleLang()">العربية</button>
+  <button id="h-manage-btn" class="h-manage" onclick="openAptManager()">⚙ Apartments</button>
+  <button id="h-reset-btn" class="h-reset" onclick="resetToDefaults()">↺ Reset</button>
 </header>
 
 <div class="rate-strip">
-  <span class="lbl">Tiered Rates (مدعوم):</span>
-  <span class="r rt1">● Tier 1 &nbsp;1–300 kWh → 0.05 JD/kWh</span>
-  <span class="r rt2">● Tier 2 &nbsp;301–600 kWh → 0.10 JD/kWh</span>
-  <span class="r rt3">● Tier 3 &nbsp;601+ kWh → 0.20 JD/kWh</span>
+  <span id="rs-lbl" class="lbl">Tiered Rates (مدعوم):</span>
+  <span id="rs-t1" class="r rt1">● Tier 1 &nbsp;1–300 kWh → 0.05 JD/kWh</span>
+  <span id="rs-t2" class="r rt2">● Tier 2 &nbsp;301–600 kWh → 0.10 JD/kWh</span>
+  <span id="rs-t3" class="r rt3">● Tier 3 &nbsp;601+ kWh → 0.20 JD/kWh</span>
 </div>
 
 <div class="container">
 
   <!-- GRAPH SECTION -->
   <div class="graph-section">
-    <div class="graph-section-title">📊 Consumption Graph</div>
+    <div id="graph-title" class="graph-section-title">📊 Consumption Graph</div>
 
     <!-- Row 1: Apt toggles + controls -->
     <div class="gc-row">
-      <span class="gc-lbl">Apartments:</span>
+      <span id="apts-lbl" class="gc-lbl">Apartments:</span>
       <div id="apt-toggles" style="display:flex;gap:7px;flex-wrap:wrap"></div>
       <div class="gc-sep"></div>
       <div class="tg" id="metric-tg">
-        <button onclick="setMetric('kwh')" class="on" data-m="kwh">kWh</button>
-        <button onclick="setMetric('cost')" data-m="cost">Cost (JD)</button>
+        <button onclick="setMetric('kwh')" class="on" data-m="kwh" id="btn-kwh">kWh</button>
+        <button onclick="setMetric('cost')" data-m="cost" id="btn-cost">Cost (JD)</button>
       </div>
       <div class="tg" id="chart-type-tg">
-        <button onclick="setChartType('bar')" class="on" data-ct="bar">Bar</button>
-        <button onclick="setChartType('line')" data-ct="line">Line</button>
+        <button onclick="setChartType('bar')" class="on" data-ct="bar" id="btn-bar">Bar</button>
+        <button onclick="setChartType('line')" data-ct="line" id="btn-line">Line</button>
       </div>
       <div class="tg" id="bar-mode-tg">
-        <button onclick="setBarMode('grouped')" class="on" data-bm="grouped">Grouped</button>
-        <button onclick="setBarMode('stacked')" data-bm="stacked">Stacked</button>
+        <button onclick="setBarMode('grouped')" class="on" data-bm="grouped" id="btn-grouped">Grouped</button>
+        <button onclick="setBarMode('stacked')" data-bm="stacked" id="btn-stacked">Stacked</button>
       </div>
     </div>
 
     <!-- Row 2: Month filter -->
     <div class="gc-row" style="align-items:flex-start">
-      <span class="gc-lbl" style="margin-top:4px">Months:</span>
+      <span id="months-lbl" class="gc-lbl" style="margin-top:4px">Months:</span>
       <div class="month-chip-wrap" id="month-filter"></div>
-      <button onclick="selectAllMonths()" style="font-size:0.75rem;padding:4px 10px;border:1px solid #e2e8f0;border-radius:6px;background:#fff;cursor:pointer;white-space:nowrap">All</button>
-      <button onclick="selectNoMonths()" style="font-size:0.75rem;padding:4px 10px;border:1px solid #e2e8f0;border-radius:6px;background:#fff;cursor:pointer;white-space:nowrap">None</button>
+      <button id="btn-all-months" onclick="selectAllMonths()" style="font-size:0.75rem;padding:4px 10px;border:1px solid #e2e8f0;border-radius:6px;background:#fff;cursor:pointer;white-space:nowrap">All</button>
+      <button id="btn-no-months" onclick="selectNoMonths()" style="font-size:0.75rem;padding:4px 10px;border:1px solid #e2e8f0;border-radius:6px;background:#fff;cursor:pointer;white-space:nowrap">None</button>
     </div>
 
     <div class="chart-wrap">
@@ -593,11 +622,11 @@
   <div id="totals-section"></div>
 
   <!-- OVERVIEW -->
-  <div class="sec-label">Overview — Per Apartment</div>
+  <div class="sec-label" id="overview-label">Overview — Per Apartment</div>
   <div class="overview-grid" id="overview-grid"></div>
 
   <!-- DETAILED SECTIONS -->
-  <div class="sec-label">Detailed Breakdown — Per Apartment</div>
+  <div class="sec-label" id="detailed-label">Detailed Breakdown — Per Apartment</div>
   <div id="apt-sections"></div>
 
 </div>
@@ -606,18 +635,18 @@
 <div id="apt-mgr-overlay">
   <div id="apt-mgr">
     <div class="modal-header">
-      <h3>Manage Apartments</h3>
+      <h3 id="apt-mgr-title">Manage Apartments</h3>
       <button class="modal-close" onclick="closeAptManager()">×</button>
     </div>
     <div class="modal-body" id="apt-mgr-body" style="gap:0;padding-bottom:6px">
       <!-- rows injected by renderAptMgrRows() -->
     </div>
     <div style="padding:0 22px 12px">
-      <button onclick="addAptMgrRow()" class="add-apt-row-btn">＋ Add Apartment</button>
+      <button id="add-apt-row-btn" onclick="addAptMgrRow()" class="add-apt-row-btn">＋ Add Apartment</button>
     </div>
     <div class="modal-footer">
-      <button class="btn-secondary" onclick="closeAptManager()">Cancel</button>
-      <button class="btn-primary" onclick="saveAptManager()">Save Changes</button>
+      <button class="btn-secondary" onclick="closeAptManager()" id="apt-mgr-cancel">Cancel</button>
+      <button class="btn-primary" onclick="saveAptManager()" id="apt-mgr-save">Save Changes</button>
     </div>
   </div>
 </div>
@@ -631,32 +660,32 @@
     </div>
     <div class="modal-body">
       <div class="form-group">
-        <label>Apartment</label>
+        <label id="lbl-apt">Apartment</label>
         <select id="m-apt" onchange="updateTierPreview()"></select>
       </div>
       <div style="display:grid;grid-template-columns:1fr 1fr;gap:12px">
         <div class="form-group">
-          <label>Month <span style="color:#dc2626">*</span></label>
+          <label id="lbl-month">Month <span style="color:#dc2626">*</span></label>
           <input type="month" id="m-month" />
         </div>
         <div class="form-group">
-          <label>Consumption (kWh) <span style="color:#dc2626">*</span></label>
+          <label id="lbl-kwh">Consumption (kWh) <span style="color:#dc2626">*</span></label>
           <input type="number" id="m-kwh" placeholder="e.g. 850" min="1" step="1" oninput="updateTierPreview()" />
         </div>
       </div>
       <div class="form-group">
-        <label>Amount Paid (JD) <span class="opt">— optional, for comparison</span></label>
+        <label id="lbl-paid">Amount Paid (JD) <span class="opt" id="lbl-paid-opt">— optional, for comparison</span></label>
         <input type="number" id="m-paid" placeholder="e.g. 95.500" min="0" step="0.001" />
       </div>
       <div class="preview-box">
-        <div class="preview-title">Live Tier Breakdown</div>
-        <div id="tier-preview"><div class="preview-placeholder">Enter kWh above to see the tier breakdown</div></div>
+        <div class="preview-title" id="preview-title-lbl">Live Tier Breakdown</div>
+        <div id="tier-preview"><div class="preview-placeholder" id="preview-ph">Enter kWh above to see the tier breakdown</div></div>
       </div>
       <div class="modal-error" id="modal-error"></div>
     </div>
     <div class="modal-footer">
-      <button class="btn-secondary" onclick="closeModal()">Cancel</button>
-      <button class="btn-primary" onclick="saveBill()">Save Bill</button>
+      <button class="btn-secondary" onclick="closeModal()" id="modal-cancel">Cancel</button>
+      <button class="btn-primary" onclick="saveBill()" id="modal-save">Save Bill</button>
     </div>
   </div>
 </div>
@@ -665,8 +694,157 @@
 // ─────────────────────────────────────────────────────────────────────────────
 // CONSTANTS
 // ─────────────────────────────────────────────────────────────────────────────
-const MN = ['Jan','Feb','Mar','Apr','May','Jun','Jul','Aug','Sep','Oct','Nov','Dec'];
-const LS_KEY = 'electric_v4';
+const MN    = ['Jan','Feb','Mar','Apr','May','Jun','Jul','Aug','Sep','Oct','Nov','Dec'];
+const MN_AR = ['يناير','فبراير','مارس','أبريل','مايو','يونيو','يوليو','أغسطس','سبتمبر','أكتوبر','نوفمبر','ديسمبر'];
+const LS_KEY  = 'electric_v4';
+const LS_LANG = 'electric_v4_lang';
+
+// ─────────────────────────────────────────────────────────────────────────────
+// TRANSLATIONS
+// ─────────────────────────────────────────────────────────────────────────────
+const STRINGS = {
+  en: {
+    appTitle:'Electric Bill Dashboard — 2026', appSub:'Jordan Electricity Distribution · Tiered Rate Analysis',
+    langToggle:'العربية', manageApts:'Apartments', resetData:'Reset',
+    tieredRates:'Tiered Rates (مدعوم):', tier1strip:'● Tier 1  1–300 kWh → 0.05 JD/kWh',
+    tier2strip:'● Tier 2  301–600 kWh → 0.10 JD/kWh', tier3strip:'● Tier 3  601+ kWh → 0.20 JD/kWh',
+    graphTitle:'📊 Consumption Graph', aptsLbl:'Apartments:', kwhBtn:'kWh', costBtn:'Cost (JD)',
+    barBtn:'Bar', lineBtn:'Line', groupedBtn:'Grouped', stackedBtn:'Stacked',
+    monthsLbl:'Months:', allBtn:'All', noneBtn:'None',
+    overviewLbl:'Overview — Per Apartment', combinedLbl:'Combined Totals',
+    detailedLbl:'Detailed Breakdown — Per Apartment',
+    addMonth:'Add Month', editMonth:'Edit Month',
+    aptField:'Apartment', monthField:'Month', kwhField:'Consumption (kWh)',
+    paidField:'Amount Paid (JD)', paidOpt:'— optional, for comparison',
+    previewTitle:'Live Tier Breakdown', previewPH:'Enter kWh above to see the tier breakdown',
+    cancel:'Cancel', saveBillBtn:'Save Bill', manageTitle:'Manage Apartments',
+    namePH:'Name (required)', meterPH:'Meter # (opt.)', addAptBtn:'＋ Add Apartment', saveChanges:'Save Changes',
+    monthsOnFile:'Months on file', avgConsumption:'Avg consumption', avgMonthlyCost:'Avg monthly cost',
+    totalCostEst:'Total cost (est.)', latestLbl:'Latest', noDataYet:'No data yet',
+    tier1lbl:'Tier 1  (1–300 × 0.05)', tier2lbl:'Tier 2  (301–600 × 0.10)', tier3lbl:'Tier 3  (601+ × 0.20)',
+    consumptionCost:'Consumption Cost', govtChargesLbl:'⊕ Govt charges', expectedTotal:'Expected Total Bill',
+    colMonth:'Month', colKwh:'Total kWh', colTier:'Tier Breakdown', colCost:'Cost',
+    paidLbl:'Paid:', noAmountPaid:'No paid amount',
+    overpaidLbl:'▲ overpaid', underpaidLbl:'▼ underpaid', matchLbl:'✓ match',
+    consumptionLine:'Consumption:', govtLine:'Govt charges:',
+    meterLbl:'Meter:', avgKwh:'Avg kWh', avgCost:'Avg Cost',
+    totalKwh:'Total kWh', totalCost:'Total Cost', peak:'Peak', lowest:'Lowest',
+    noMonthsYet:'No months recorded yet.', addOneLink:'Add one →',
+    allApts:'all apartments', allMos:'all months',
+    totalConsumption:'Total Consumption', totalCostInclCharges:'Total Cost (incl. charges)',
+    avgPerMonthKwh:'Avg per Month — kWh', avgPerMonthCost:'Avg per Month — Cost',
+    grandTotal:'Grand Total',
+    totSubtitle:'Use the apartment toggles and month filter in the graph above to change the selection.',
+    selectAptMonth:'Select at least one apartment and one month to show the graph.',
+    errSelectMonth:'Please select a month.', errEnterKwh:'Please enter a valid consumption (kWh > 0).',
+    deleteConfirm:(m,a)=>`Delete ${m} from ${a}?`,
+    resetConfirm:'Reset everything back to defaults? All custom apartments, bills, and names will be removed.',
+    removeConfirm:(n,w)=>`Remove "${n}"?${w}`,
+    billsWarn:(n)=>` This will also delete ${n} saved bill${n!==1?'s':''}.`,
+    errFillName:'Please fill in a name for every apartment.',
+    errOneApt:'You need at least one apartment.',
+    aptCount:(n)=>`${n} apartment${n!==1?'s':''}`,
+    moCount:(n)=>`${n} month${n!==1?'s':''}`,
+  },
+  ar: {
+    appTitle:'لوحة فواتير الكهرباء — 2026', appSub:'شركة توزيع الكهرباء الأردنية · تحليل الشرائح السعرية',
+    langToggle:'English', manageApts:'الشقق', resetData:'إعادة تعيين',
+    tieredRates:'الأسعار المتدرجة (مدعوم):', tier1strip:'● الشريحة 1  1–300 كيلوواط → 0.05 د.أ/كيلوواط',
+    tier2strip:'● الشريحة 2  301–600 كيلوواط → 0.10 د.أ/كيلوواط', tier3strip:'● الشريحة 3  601+ كيلوواط → 0.20 د.أ/كيلوواط',
+    graphTitle:'📊 رسم بياني للاستهلاك', aptsLbl:'الشقق:', kwhBtn:'كيلوواط', costBtn:'التكلفة (د.أ)',
+    barBtn:'أعمدة', lineBtn:'خط', groupedBtn:'مجمّعة', stackedBtn:'متراكمة',
+    monthsLbl:'الأشهر:', allBtn:'الكل', noneBtn:'لا شيء',
+    overviewLbl:'نظرة عامة — لكل شقة', combinedLbl:'الإجماليات المجمّعة',
+    detailedLbl:'التفصيل الكامل — لكل شقة',
+    addMonth:'إضافة شهر', editMonth:'تعديل الشهر',
+    aptField:'الشقة', monthField:'الشهر', kwhField:'الاستهلاك (كيلوواط)',
+    paidField:'المبلغ المدفوع (د.أ)', paidOpt:'— اختياري، للمقارنة',
+    previewTitle:'تفاصيل الشرائح المباشرة', previewPH:'أدخل الكيلوواط أعلاه لعرض التفاصيل',
+    cancel:'إلغاء', saveBillBtn:'حفظ الفاتورة', manageTitle:'إدارة الشقق',
+    namePH:'الاسم (مطلوب)', meterPH:'رقم العداد (اختياري)', addAptBtn:'＋ إضافة شقة', saveChanges:'حفظ التغييرات',
+    monthsOnFile:'الأشهر المسجّلة', avgConsumption:'متوسط الاستهلاك', avgMonthlyCost:'متوسط التكلفة الشهرية',
+    totalCostEst:'إجمالي التكلفة (تقديري)', latestLbl:'آخر فاتورة', noDataYet:'لا توجد بيانات بعد',
+    tier1lbl:'الشريحة 1  (1–300 × 0.05)', tier2lbl:'الشريحة 2  (301–600 × 0.10)', tier3lbl:'الشريحة 3  (601+ × 0.20)',
+    consumptionCost:'تكلفة الاستهلاك', govtChargesLbl:'⊕ رسوم حكومية', expectedTotal:'المبلغ الإجمالي المتوقع',
+    colMonth:'الشهر', colKwh:'كيلوواط', colTier:'تفاصيل الشرائح', colCost:'التكلفة',
+    paidLbl:'المدفوع:', noAmountPaid:'لا يوجد مبلغ مدفوع',
+    overpaidLbl:'▲ دفع زائد', underpaidLbl:'▼ دفع ناقص', matchLbl:'✓ مطابق',
+    consumptionLine:'الاستهلاك:', govtLine:'رسوم حكومية:',
+    meterLbl:'العداد:', avgKwh:'متوسط كيلوواط', avgCost:'متوسط التكلفة',
+    totalKwh:'إجمالي كيلوواط', totalCost:'إجمالي التكلفة', peak:'الذروة', lowest:'الأدنى',
+    noMonthsYet:'لم يتم تسجيل أشهر بعد.', addOneLink:'أضف →',
+    allApts:'جميع الشقق', allMos:'جميع الأشهر',
+    totalConsumption:'إجمالي الاستهلاك', totalCostInclCharges:'إجمالي التكلفة (شامل الرسوم)',
+    avgPerMonthKwh:'متوسط شهري — كيلوواط', avgPerMonthCost:'متوسط شهري — التكلفة',
+    grandTotal:'المجموع الكلي',
+    totSubtitle:'استخدم أزرار الشقق وفلتر الأشهر في الرسم البياني أعلاه لتغيير التحديد.',
+    selectAptMonth:'اختر شقة واحدة على الأقل وشهراً لعرض الرسم البياني.',
+    errSelectMonth:'يرجى اختيار شهر.', errEnterKwh:'يرجى إدخال استهلاك صحيح (كيلوواط > 0).',
+    deleteConfirm:(m,a)=>`حذف ${m} من ${a}؟`,
+    resetConfirm:'هل تريد إعادة تعيين كل شيء؟ ستتم إزالة جميع الشقق المخصصة والفواتير والأسماء.',
+    removeConfirm:(n,w)=>`إزالة "${n}"؟${w}`,
+    billsWarn:(n)=>` سيؤدي ذلك أيضاً إلى حذف ${n} فاتورة محفوظة.`,
+    errFillName:'يرجى إدخال اسم لكل شقة.',
+    errOneApt:'تحتاج إلى شقة واحدة على الأقل.',
+    aptCount:(n)=>`${n} شقة`,
+    moCount:(n)=>`${n} شهر`,
+  }
+};
+
+let lang = localStorage.getItem(LS_LANG) || 'en';
+function t(key) { const s = STRINGS[lang]; return s && s[key] !== undefined ? s[key] : (STRINGS.en[key] || key); }
+
+function applyLang() {
+  document.documentElement.setAttribute('dir', lang === 'ar' ? 'rtl' : 'ltr');
+  document.documentElement.setAttribute('lang', lang);
+  localStorage.setItem(LS_LANG, lang);
+  // Header
+  document.getElementById('h-title').textContent     = t('appTitle');
+  document.getElementById('h-sub').textContent       = t('appSub');
+  document.getElementById('lang-toggle-btn').textContent = t('langToggle');
+  document.getElementById('h-manage-btn').textContent = '⚙ ' + t('manageApts');
+  document.getElementById('h-reset-btn').textContent  = '↺ ' + t('resetData');
+  // Rate strip
+  document.getElementById('rs-lbl').textContent = t('tieredRates');
+  document.getElementById('rs-t1').textContent  = t('tier1strip');
+  document.getElementById('rs-t2').textContent  = t('tier2strip');
+  document.getElementById('rs-t3').textContent  = t('tier3strip');
+  // Graph controls
+  document.getElementById('graph-title').textContent = t('graphTitle');
+  document.getElementById('apts-lbl').textContent    = t('aptsLbl');
+  document.getElementById('btn-kwh').textContent     = t('kwhBtn');
+  document.getElementById('btn-cost').textContent    = t('costBtn');
+  document.getElementById('btn-bar').textContent     = t('barBtn');
+  document.getElementById('btn-line').textContent    = t('lineBtn');
+  document.getElementById('btn-grouped').textContent = t('groupedBtn');
+  document.getElementById('btn-stacked').textContent = t('stackedBtn');
+  document.getElementById('months-lbl').textContent  = t('monthsLbl');
+  document.getElementById('btn-all-months').textContent = t('allBtn');
+  document.getElementById('btn-no-months').textContent  = t('noneBtn');
+  // Section labels
+  document.getElementById('overview-label').textContent  = t('overviewLbl');
+  document.getElementById('detailed-label').textContent  = t('detailedLbl');
+  // Modal
+  document.getElementById('lbl-apt').innerHTML        = t('aptField');
+  document.getElementById('lbl-month').innerHTML      = t('monthField') + ' <span style="color:#dc2626">*</span>';
+  document.getElementById('lbl-kwh').innerHTML        = t('kwhField') + ' <span style="color:#dc2626">*</span>';
+  document.getElementById('lbl-paid').innerHTML       = t('paidField') + ' <span class="opt" id="lbl-paid-opt">' + t('paidOpt') + '</span>';
+  document.getElementById('preview-title-lbl').textContent = t('previewTitle');
+  document.getElementById('modal-cancel').textContent = t('cancel');
+  document.getElementById('modal-save').textContent   = t('saveBillBtn');
+  // Apt manager modal
+  document.getElementById('apt-mgr-title').textContent  = t('manageTitle');
+  document.getElementById('add-apt-row-btn').textContent = t('addAptBtn');
+  document.getElementById('apt-mgr-cancel').textContent  = t('cancel');
+  document.getElementById('apt-mgr-save').textContent    = t('saveChanges');
+  // Re-render everything that uses t()
+  refreshAll();
+}
+
+function toggleLang() {
+  lang = lang === 'en' ? 'ar' : 'en';
+  applyLang();
+}
 
 const APT_META_DEFAULTS = {
   nasser:   { name: 'Nasser',   meter: '20242142461', color: '#2563eb' },
@@ -762,7 +940,7 @@ function loadExtras() {
 function saveExtras() { localStorage.setItem(LS_EXTRA, JSON.stringify(extraCharges)); }
 
 function resetToDefaults() {
-  if (!confirm('Reset everything back to defaults? All custom apartments, bills, and names will be removed.')) return;
+  if (!confirm(t('resetConfirm'))) return;
   localStorage.removeItem(LS_KEY);
   localStorage.removeItem(LS_EXTRA);
   localStorage.removeItem(LS_META);
@@ -799,7 +977,7 @@ function calcGrand(aptId, kwh) {
 // ─────────────────────────────────────────────────────────────────────────────
 // UTILS
 // ─────────────────────────────────────────────────────────────────────────────
-function fmtM(ym) { const [y,m] = ym.split('-'); return `${MN[+m-1]} ${y}`; }
+function fmtM(ym) { const [y,m] = ym.split('-'); return lang === 'ar' ? `${MN_AR[+m-1]} ${y}` : `${MN[+m-1]} ${y}`; }
 function f(n, d=3) { return (+n).toFixed(d); }
 function avg(arr) { return arr.length ? arr.reduce((s,v)=>s+v,0)/arr.length : 0; }
 function initials(n) { return n.split(' ').map(w=>w[0]).join('').toUpperCase().slice(0,2); }
@@ -858,7 +1036,7 @@ function renderAptToggles() {
 
 function renderMonthFilter() {
   const months = allMonths();
-  if (!months.length) { document.getElementById('month-filter').innerHTML = '<span style="color:#94a3b8;font-size:0.78rem">No data yet</span>'; return; }
+  if (!months.length) { document.getElementById('month-filter').innerHTML = `<span style="color:#94a3b8;font-size:0.78rem">${t('noDataYet')}</span>`; return; }
   document.getElementById('month-filter').innerHTML = months.map(m =>
     `<span class="month-chip ${gMonths.has(m) ? 'on' : ''}" onclick="toggleMonth('${m}')">${fmtM(m)}</span>`
   ).join('');
@@ -885,7 +1063,7 @@ function renderChart() {
   const apts   = Object.keys(APT_META).filter(id => gApts.has(id));
 
   if (!months.length || !apts.length) {
-    empty.innerHTML = 'Select at least one apartment and one month to show the graph.';
+    empty.innerHTML = t('selectAptMonth');
     empty.style.display = 'flex';
     canvas.style.display = 'none';
     if (chartInst) { chartInst.destroy(); chartInst = null; }
@@ -954,7 +1132,7 @@ function renderChart() {
 function openModal(aptId, month) {
   editKey = month ? { aptId, month } : null;
   const overlay = document.getElementById('modal-overlay');
-  document.getElementById('modal-title').textContent = month ? 'Edit Month' : 'Add Month';
+  document.getElementById('modal-title').textContent = month ? t('editMonth') : t('addMonth');
   document.getElementById('modal-error').textContent = '';
 
   // Populate apt select
@@ -985,7 +1163,7 @@ function updateTierPreview() {
   const kwh   = parseFloat(document.getElementById('m-kwh').value) || 0;
   const aptId = document.getElementById('m-apt').value;
   const box   = document.getElementById('tier-preview');
-  if (!kwh || kwh <= 0) { box.innerHTML = '<div class="preview-placeholder">Enter kWh above to see the tier breakdown</div>'; return; }
+  if (!kwh || kwh <= 0) { box.innerHTML = `<div class="preview-placeholder">${t('previewPH')}</div>`; return; }
   const c     = tiers(kwh);
   const extra = calcExtra(aptId, kwh);
   const grand = calcGrand(aptId, kwh);
@@ -1006,31 +1184,28 @@ function updateTierPreview() {
 
   const extraRow = hasExtra ? `
     <div style="display:flex;justify-content:space-between;align-items:center;font-size:0.78rem;padding:3px 0;color:#64748b;border-top:1px dashed #e2e8f0;margin-top:6px;padding-top:6px">
-      <span>⊕ Govt charges &nbsp;<span style="color:#94a3b8;font-size:0.71rem">(${f(e.fixed,3)} fixed + ${e.perKwh} × ${kwh} kWh)</span></span>
+      <span>${t('govtChargesLbl')} &nbsp;<span style="color:#94a3b8;font-size:0.71rem">(${f(e.fixed,3)} + ${e.perKwh} × ${kwh} kWh)</span></span>
       <span style="font-weight:700;color:#7c3aed">+${f(extra)} JD</span>
     </div>` : '';
 
   box.innerHTML = `
-    ${tierRow('#16a34a','Tier 1  (1–300 × 0.05)', c.t1k, c.t1c, true)}
-    ${tierRow('#d97706','Tier 2  (301–600 × 0.10)', c.t2k, c.t2c, c.t2k > 0)}
-    ${tierRow('#dc2626','Tier 3  (601+ × 0.20)', c.t3k, c.t3c, c.t3k > 0)}
+    ${tierRow('#16a34a', t('tier1lbl'), c.t1k, c.t1c, true)}
+    ${tierRow('#d97706', t('tier2lbl'), c.t2k, c.t2c, c.t2k > 0)}
+    ${tierRow('#dc2626', t('tier3lbl'), c.t3k, c.t3c, c.t3k > 0)}
     <div class="prev-bar">
       <div style="width:${p1}%;background:#16a34a;height:100%"></div>
       <div style="width:${p2}%;background:#d97706;height:100%"></div>
       <div style="width:${p3}%;background:#dc2626;height:100%"></div>
     </div>
     <div class="prev-total">
-      <span>Consumption Cost</span>
+      <span>${t('consumptionCost')}</span>
       <span style="color:#2563eb;font-weight:700">${f(c.total)} JD</span>
     </div>
     ${extraRow}
-    ${hasExtra ? `<div class="prev-total" style="margin-top:4px;padding-top:4px;border-top:2px solid #e2e8f0">
-      <span style="font-weight:700">Expected Total Bill</span>
+    <div class="prev-total" style="margin-top:4px;padding-top:4px;border-top:2px solid #e2e8f0">
+      <span style="font-weight:700">${t('expectedTotal')}</span>
       <strong style="color:#2563eb;font-size:1.08rem">${f(grand)} JD</strong>
-    </div>` : `<div class="prev-total" style="margin-top:4px;padding-top:4px;border-top:2px solid #e2e8f0">
-      <span style="font-weight:700">Expected Total Bill</span>
-      <strong style="color:#2563eb;font-size:1.08rem">${f(grand)} JD</strong>
-    </div>`}`;
+    </div>`;
 }
 
 function saveBill() {
@@ -1041,8 +1216,8 @@ function saveBill() {
   const paid  = paidV !== '' ? parseFloat(paidV) : null;
   const errEl = document.getElementById('modal-error');
 
-  if (!month) { errEl.textContent = 'Please select a month.'; return; }
-  if (!kwh || kwh <= 0) { errEl.textContent = 'Please enter a valid consumption (kWh > 0).'; return; }
+  if (!month) { errEl.textContent = t('errSelectMonth'); return; }
+  if (!kwh || kwh <= 0) { errEl.textContent = t('errEnterKwh'); return; }
   errEl.textContent = '';
 
   if (!bills[aptId]) bills[aptId] = [];
@@ -1058,7 +1233,7 @@ function saveBill() {
 }
 
 function deleteBill(aptId, month) {
-  if (!confirm(`Delete ${fmtM(month)} from ${APT_META[aptId].name}?`)) return;
+  if (!confirm(t('deleteConfirm')(fmtM(month), APT_META[aptId].name))) return;
   const arr = bills[aptId] || [];
   const idx = arr.findIndex(b => b.month === month);
   if (idx >= 0) arr.splice(idx, 1);
@@ -1086,12 +1261,12 @@ function renderOverview() {
         <div class="apt-avatar" style="background:${meta.color}">${initials(meta.name)}</div>
         <div><div class="ov-name">${meta.name}</div><div class="ov-meter">${meta.meter !== '—' ? meta.meter : '—'}</div></div>
       </div>
-      ${arr.length === 0 ? '<div class="ov-empty">No data yet</div>' : `
-        <div class="ov-stat"><span class="lbl">Months on file</span><span class="val">${arr.length}</span></div>
-        <div class="ov-stat"><span class="lbl">Avg consumption</span><span class="val">${f(avgK,0)} kWh</span></div>
-        <div class="ov-stat"><span class="lbl">Avg monthly cost</span><span class="val hl">${f(avgC)} JD</span></div>
-        <div class="ov-stat"><span class="lbl">Total cost (est.)</span><span class="val">${f(totC)} JD</span></div>
-        ${last ? `<div class="ov-stat"><span class="lbl">Latest (${fmtM(last.month)})</span><span class="val hl">${f(calcGrand(id, last.kwh))} JD</span></div>` : ''}
+      ${arr.length === 0 ? `<div class="ov-empty">${t('noDataYet')}</div>` : `
+        <div class="ov-stat"><span class="lbl">${t('monthsOnFile')}</span><span class="val">${arr.length}</span></div>
+        <div class="ov-stat"><span class="lbl">${t('avgConsumption')}</span><span class="val">${f(avgK,0)} kWh</span></div>
+        <div class="ov-stat"><span class="lbl">${t('avgMonthlyCost')}</span><span class="val hl">${f(avgC)} JD</span></div>
+        <div class="ov-stat"><span class="lbl">${t('totalCostEst')}</span><span class="val">${f(totC)} JD</span></div>
+        ${last ? `<div class="ov-stat"><span class="lbl">${t('latestLbl')} (${fmtM(last.month)})</span><span class="val hl">${f(calcGrand(id, last.kwh))} JD</span></div>` : ''}
       `}
     </div>`;
   }).join('');
@@ -1120,7 +1295,7 @@ function renderAptSections() {
       const diff = bill.paid != null ? +(bill.paid - grand).toFixed(3) : null;
       const diffStr   = diff !== null ? (diff >= 0 ? `+${f(diff)}` : `${f(diff)}`) + ' JD' : null;
       const diffColor = diff !== null ? (Math.abs(diff) < 0.02 ? '#94a3b8' : diff > 0 ? '#dc2626' : '#16a34a') : '';
-      const diffLabel = diff !== null ? (Math.abs(diff) < 0.02 ? '✓ match' : diff > 0 ? '▲ overpaid' : '▼ underpaid') : '';
+      const diffLabel = diff !== null ? (Math.abs(diff) < 0.02 ? t('matchLbl') : diff > 0 ? t('overpaidLbl') : t('underpaidLbl')) : '';
 
       return `<tr>
         <td class="month-cell">${fmtM(bill.month)}</td>
@@ -1152,13 +1327,13 @@ function renderAptSections() {
         <td>
           <div class="cost-main">${f(grand)} JD</div>
           ${hasExtra
-            ? `<div class="cost-paid" style="color:#64748b">Consumption: ${f(c.total)} JD</div>
-               <div class="cost-paid" style="color:#7c3aed">Govt charges: +${f(extra)} JD</div>`
+            ? `<div class="cost-paid" style="color:#64748b">${t('consumptionLine')} ${f(c.total)} JD</div>
+               <div class="cost-paid" style="color:#7c3aed">${t('govtLine')} +${f(extra)} JD</div>`
             : ''}
           ${bill.paid != null
-            ? `<div class="cost-paid">Paid: ${f(bill.paid)} JD</div>
+            ? `<div class="cost-paid">${t('paidLbl')} ${f(bill.paid)} JD</div>
                <div class="cost-diff" style="color:${diffColor}">${diffStr} &nbsp;<span style="opacity:.7">${diffLabel}</span></div>`
-            : `<div class="cost-paid" style="color:#cbd5e1">No paid amount</div>`}
+            : `<div class="cost-paid" style="color:#cbd5e1">${t('noAmountPaid')}</div>`}
         </td>
         <td style="white-space:nowrap">
           <div style="display:flex;gap:5px">
@@ -1174,28 +1349,28 @@ function renderAptSections() {
         <div class="apt-avatar" style="background:${meta.color}">${initials(meta.name)}</div>
         <div style="flex:1">
           <div class="apt-block-title">${meta.name}</div>
-          <div class="apt-block-sub">Meter: ${meta.meter} &nbsp;·&nbsp; ${arr.length} month${arr.length!==1?'s':''}</div>
+          <div class="apt-block-sub">${t('meterLbl')} ${meta.meter} &nbsp;·&nbsp; ${arr.length} ${lang==='ar'?'شهر':'month'+( arr.length!==1?'s':'')}</div>
         </div>
         <button class="add-month-btn" onclick="openModal('${id}')" style="border-color:${meta.color};color:${meta.color}">+ Add Month</button>
       </div>
       ${arr.length > 0 ? `
       <div class="pill-row">
-        <div class="pill"><div class="p-lbl">Avg kWh</div><div class="p-val">${f(avgK,0)}<span class="p-unit"> kWh</span></div></div>
-        <div class="pill"><div class="p-lbl">Avg Cost</div><div class="p-val">${f(avgC)}<span class="p-unit"> JD</span></div></div>
-        <div class="pill"><div class="p-lbl">Total kWh</div><div class="p-val">${totK.toLocaleString()}<span class="p-unit"> kWh</span></div></div>
-        <div class="pill"><div class="p-lbl">Total Cost</div><div class="p-val">${f(totC)}<span class="p-unit"> JD</span></div></div>
-        <div class="pill"><div class="p-lbl">Peak</div><div class="p-val">${Math.max(...kArr).toLocaleString()}<span class="p-unit"> kWh</span></div></div>
-        <div class="pill"><div class="p-lbl">Lowest</div><div class="p-val">${Math.min(...kArr).toLocaleString()}<span class="p-unit"> kWh</span></div></div>
+        <div class="pill"><div class="p-lbl">${t('avgKwh')}</div><div class="p-val">${f(avgK,0)}<span class="p-unit"> kWh</span></div></div>
+        <div class="pill"><div class="p-lbl">${t('avgCost')}</div><div class="p-val">${f(avgC)}<span class="p-unit"> JD</span></div></div>
+        <div class="pill"><div class="p-lbl">${t('totalKwh')}</div><div class="p-val">${totK.toLocaleString()}<span class="p-unit"> kWh</span></div></div>
+        <div class="pill"><div class="p-lbl">${t('totalCost')}</div><div class="p-val">${f(totC)}<span class="p-unit"> JD</span></div></div>
+        <div class="pill"><div class="p-lbl">${t('peak')}</div><div class="p-val">${Math.max(...kArr).toLocaleString()}<span class="p-unit"> kWh</span></div></div>
+        <div class="pill"><div class="p-lbl">${t('lowest')}</div><div class="p-val">${Math.min(...kArr).toLocaleString()}<span class="p-unit"> kWh</span></div></div>
       </div>
       <div class="table-wrap">
         <table class="bt">
           <thead><tr>
-            <th>Month</th><th>Total kWh</th><th>Tier Breakdown</th><th>Cost</th><th style="width:66px"></th>
+            <th>${t('colMonth')}</th><th>${t('colKwh')}</th><th>${t('colTier')}</th><th>${t('colCost')}</th><th style="width:66px"></th>
           </tr></thead>
           <tbody>${rows}</tbody>
         </table>
-      </div>` : `<div class="empty-apt">No months recorded yet.
-        <button class="empty-link" onclick="openModal('${id}')" style="color:${meta.color}">Add one →</button>
+      </div>` : `<div class="empty-apt">${t('noMonthsYet')}
+        <button class="empty-link" onclick="openModal('${id}')" style="color:${meta.color}">${t('addOneLink')}</button>
       </div>`}
     </div>`;
   }).join('');
@@ -1260,40 +1435,40 @@ function renderTotals() {
       : `<td style="color:#e2e8f0">—</td>`;
   }).join('');
 
-  const aptLabel = apts.length === Object.keys(APT_META).length ? 'all apartments' : `${apts.length} apartment${apts.length !== 1 ? 's' : ''}`;
-  const monLabel = months.length === allMonths().length ? 'all months' : `${months.length} month${months.length !== 1 ? 's' : ''}`;
+  const aptLabel = apts.length === Object.keys(APT_META).length ? t('allApts') : t('aptCount')(apts.length);
+  const monLabel = months.length === allMonths().length ? t('allMos') : t('moCount')(months.length);
 
   el.innerHTML = `
-  <div class="sec-label">Combined Totals</div>
+  <div class="sec-label" id="combined-label">${t('combinedLbl')}</div>
   <div class="totals-section">
-    <div class="totals-title">🔢 Combined — ${aptLabel}, ${monLabel}</div>
-    <div class="totals-subtitle">Use the apartment toggles and month filter in the graph above to change the selection.</div>
+    <div class="totals-title">🔢 ${aptLabel}، ${monLabel}</div>
+    <div class="totals-subtitle">${t('totSubtitle')}</div>
     <div class="totals-pills">
       <div class="tot-pill accent">
-        <div class="tp-lbl">Total Consumption</div>
+        <div class="tp-lbl">${t('totalConsumption')}</div>
         <div class="tp-val">${grandKwh.toLocaleString()}<span class="tp-unit"> kWh</span></div>
       </div>
       <div class="tot-pill accent">
-        <div class="tp-lbl">Total Cost (incl. charges)</div>
+        <div class="tp-lbl">${t('totalCostInclCharges')}</div>
         <div class="tp-val">${f(grandCost)}<span class="tp-unit"> JD</span></div>
       </div>
       <div class="tot-pill">
-        <div class="tp-lbl">Avg per Month — kWh</div>
+        <div class="tp-lbl">${t('avgPerMonthKwh')}</div>
         <div class="tp-val">${f(avgKwh, 0)}<span class="tp-unit"> kWh</span></div>
       </div>
       <div class="tot-pill">
-        <div class="tp-lbl">Avg per Month — Cost</div>
+        <div class="tp-lbl">${t('avgPerMonthCost')}</div>
         <div class="tp-val">${f(avgCost)}<span class="tp-unit"> JD</span></div>
       </div>
     </div>
     <div class="totals-table-wrap">
       <table class="tot">
         <thead><tr>
-          <th>Month</th>${aptHeaders}<th>Total kWh</th><th>Total Cost</th>
+          <th>${t('colMonth')}</th>${aptHeaders}<th>${t('totalKwh')}</th><th>${t('totalCost')}</th>
         </tr></thead>
         <tbody>${bodyRows}</tbody>
         <tfoot><tr>
-          <td>Grand Total</td>${footAptCells}
+          <td>${t('grandTotal')}</td>${footAptCells}
           <td>${grandKwh.toLocaleString()} kWh</td>
           <td style="color:#2563eb">${f(grandCost)} JD</td>
         </tr></tfoot>
@@ -1321,10 +1496,10 @@ function renderAptMgrRows() {
 function aptMgrRowHTML(id, meta) {
   const meterVal = (meta.meter && meta.meter !== '—') ? meta.meter : '';
   return `<div class="apt-mgr-row" data-id="${id}">
-    <input type="color" class="apt-color-inp" value="${meta.color}" title="Pick color">
-    <input type="text"  class="apt-name-inp"  value="${meta.name}"  placeholder="Name (required)">
-    <input type="text"  class="apt-meter-inp" value="${meterVal}"   placeholder="Meter # (opt.)">
-    <button class="apt-del-btn" onclick="confirmDeleteApt(this)" title="Remove apartment">🗑</button>
+    <input type="color" class="apt-color-inp" value="${meta.color}">
+    <input type="text"  class="apt-name-inp"  value="${meta.name}"  placeholder="${t('namePH')}">
+    <input type="text"  class="apt-meter-inp" value="${meterVal}"   placeholder="${t('meterPH')}">
+    <button class="apt-del-btn" onclick="confirmDeleteApt(this)">🗑</button>
   </div>`;
 }
 
@@ -1343,8 +1518,8 @@ function confirmDeleteApt(btn) {
   const id    = row.dataset.id;
   const name  = row.querySelector('.apt-name-inp').value || 'this apartment';
   const count = (bills[id] || []).length;
-  const warn  = count > 0 ? ` This will also delete ${count} saved bill${count !== 1 ? 's' : ''}.` : '';
-  if (!confirm(`Remove "${name}"?${warn}`)) return;
+  const warn  = count > 0 ? t('billsWarn')(count) : '';
+  if (!confirm(t('removeConfirm')(name, warn))) return;
   row.remove();
 }
 
@@ -1363,8 +1538,8 @@ function saveAptManager() {
     newMeta[id] = { name, color, meter };
   });
 
-  if (hasError) { alert('Please fill in a name for every apartment.'); return; }
-  if (Object.keys(newMeta).length === 0) { alert('You need at least one apartment.'); return; }
+  if (hasError) { alert(t('errFillName')); return; }
+  if (Object.keys(newMeta).length === 0) { alert(t('errOneApt')); return; }
 
   // Remove bills for deleted apartments
   const removed = Object.keys(APT_META).filter(id => !newMeta[id]);
@@ -1408,7 +1583,7 @@ document.getElementById('modal-overlay').addEventListener('click', e => {
 document.getElementById('apt-mgr-overlay').addEventListener('click', e => {
   if (e.target === document.getElementById('apt-mgr-overlay')) closeAptManager();
 });
-refreshAll();
+applyLang(); // sets dir, translates static HTML, then calls refreshAll()
 </script>
 </body>
 </html>
