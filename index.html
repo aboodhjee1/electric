@@ -1,0 +1,1414 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+  <title>⚡ Electric Bill Dashboard</title>
+  <script>
+  /* ── Lightweight canvas chart engine (no CDN needed) ── */
+  class SimpleChart {
+    constructor(canvas, cfg) {
+      this.canvas  = canvas;
+      this.ctx     = canvas.getContext('2d');
+      this.type    = cfg.type;
+      this.labels  = cfg.data.labels;
+      this.datasets= cfg.data.datasets;
+      this.opts    = cfg.options || {};
+      this._hov    = null;
+      this._setup();
+      this._draw();
+      this._bindEvents();
+      this._ro = new ResizeObserver(() => { this._setup(); this._draw(this._hov); });
+      this._ro.observe(canvas.parentElement);
+    }
+
+    destroy() {
+      this.canvas.removeEventListener('mousemove', this._mm);
+      this.canvas.removeEventListener('mouseleave', this._ml);
+      this.canvas.removeEventListener('touchmove', this._tm);
+      this.canvas.removeEventListener('touchend',  this._te);
+      if (this._ro) this._ro.disconnect();
+    }
+
+    _setup() {
+      const dpr = window.devicePixelRatio || 1;
+      const par = this.canvas.parentElement;
+      const W = par.clientWidth  || 600;
+      const H = par.clientHeight || 320;
+      this.canvas.width  = W * dpr;
+      this.canvas.height = H * dpr;
+      this.canvas.style.width  = W + 'px';
+      this.canvas.style.height = H + 'px';
+      this.ctx.setTransform(dpr, 0, 0, dpr, 0, 0);
+      this._W = W; this._H = H;
+    }
+
+    _niceMax(v) {
+      if (v <= 0) return 100;
+      const e = Math.pow(10, Math.floor(Math.log10(v)));
+      return Math.ceil(v * 1.12 / e) * e;
+    }
+
+    _draw(hov = null) {
+      const { ctx, labels, datasets, type, opts } = this;
+      const W = this._W, H = this._H;
+      ctx.clearRect(0, 0, W, H);
+      const n = labels.length;
+      if (!n || !datasets.length) return;
+
+      const PL = 72, PR = 18, PT = 16, PB = 74;
+      const cw = W - PL - PR, ch = H - PT - PB;
+      const stacked = opts.scales?.y?.stacked;
+
+      let maxV;
+      if (stacked) {
+        maxV = Math.max(...Array.from({length:n},(_,i)=>datasets.reduce((s,d)=>s+(d.data[i]??0),0)));
+      } else {
+        maxV = Math.max(0,...datasets.flatMap(d=>d.data.filter(v=>v!=null)));
+      }
+      const nMax  = this._niceMax(maxV||1);
+      const TICKS = 5;
+      const tStep = nMax / TICKS;
+      const sy = v => ch * (1 - v / nMax);
+
+      /* grid + y-labels */
+      for (let t = 0; t <= TICKS; t++) {
+        const v = t * tStep;
+        const y = PT + sy(v);
+        ctx.strokeStyle = '#e8edf3'; ctx.lineWidth = 1;
+        ctx.beginPath(); ctx.moveTo(PL, y); ctx.lineTo(PL + cw, y); ctx.stroke();
+        const lbl = opts.scales?.y?.ticks?.callback ? opts.scales.y.ticks.callback(v) : v.toFixed(0);
+        ctx.fillStyle = '#64748b'; ctx.font = '11px system-ui,sans-serif'; ctx.textAlign = 'right';
+        ctx.fillText(lbl, PL - 6, y + 4);
+      }
+
+      /* x-labels */
+      const colW = cw / n;
+      ctx.fillStyle = '#64748b'; ctx.font = '11px system-ui,sans-serif'; ctx.textAlign = 'center';
+      labels.forEach((lbl, i) => ctx.fillText(lbl, PL + colW * i + colW / 2, PT + ch + 18));
+
+      /* data */
+      if (type === 'bar') this._bars(PL,PT,cw,ch,colW,n,sy,hov,stacked);
+      else                this._lines(PL,PT,cw,ch,colW,n,sy,hov);
+
+      /* hover line */
+      if (hov !== null && hov >= 0 && hov < n) {
+        const hx = PL + colW * hov + colW / 2;
+        ctx.save(); ctx.strokeStyle='#94a3b8'; ctx.lineWidth=1; ctx.setLineDash([3,4]);
+        ctx.beginPath(); ctx.moveTo(hx,PT); ctx.lineTo(hx,PT+ch); ctx.stroke(); ctx.restore();
+        this._tooltip(hov, hx, PT + ch/2, W, H);
+      }
+      this._legend(W, PT + ch + 42);
+    }
+
+    _bars(PL,PT,cw,ch,colW,n,sy,hov,stacked) {
+      const { ctx, datasets } = this;
+      const gap = Math.max(4, colW * 0.13);
+      if (stacked) {
+        for (let i = 0; i < n; i++) {
+          let base = 0;
+          datasets.forEach(ds => {
+            const v = ds.data[i]; if (v==null||v===0) return;
+            const x=PL+colW*i+gap, bw=colW-gap*2;
+            const y1=PT+sy(base+v), h=sy(base)-sy(base+v);
+            ctx.fillStyle = i===hov ? ds.borderColor+'ee' : ds.backgroundColor;
+            this._rr(x,y1,bw,Math.max(1,h),3); base+=v;
+          });
+        }
+      } else {
+        const nd = datasets.length;
+        const bw = Math.max(5, (colW - gap*2) / nd - 2);
+        const grpW = bw*nd + 2*(nd-1);
+        datasets.forEach((ds,di) => {
+          ds.data.forEach((v,i) => {
+            if (v==null) return;
+            const gx = PL+colW*i+(colW-grpW)/2;
+            const x  = gx + di*(bw+2);
+            const y  = PT+sy(v), h=ch-sy(v);
+            ctx.fillStyle = i===hov ? ds.borderColor+'ee' : ds.backgroundColor;
+            this._rr(x,y,bw,Math.max(1,h),4);
+          });
+        });
+      }
+    }
+
+    _lines(PL,PT,cw,ch,colW,n,sy,hov) {
+      const { ctx, datasets } = this;
+      datasets.forEach(ds => {
+        ctx.save(); ctx.strokeStyle=ds.borderColor; ctx.lineWidth=2.5;
+        ctx.lineJoin='round'; ctx.lineCap='round';
+        let first=true; ctx.beginPath();
+        ds.data.forEach((v,i)=>{
+          if(v==null){first=true;return;}
+          const x=PL+colW*i+colW/2, y=PT+sy(v);
+          first ? ctx.moveTo(x,y) : ctx.lineTo(x,y); first=false;
+        });
+        ctx.stroke(); ctx.restore();
+        ds.data.forEach((v,i)=>{
+          if(v==null) return;
+          const x=PL+colW*i+colW/2, y=PT+sy(v), r=i===hov?7:5;
+          ctx.save(); ctx.fillStyle='#fff'; ctx.strokeStyle=ds.borderColor;
+          ctx.lineWidth=2.5; ctx.beginPath(); ctx.arc(x,y,r,0,2*Math.PI);
+          ctx.fill(); ctx.stroke(); ctx.restore();
+        });
+      });
+    }
+
+    _tooltip(idx, cx, cy, W, H) {
+      const { ctx, labels, datasets, opts } = this;
+      const cb = opts?.plugins?.tooltip?.callbacks?.label;
+      const lines = datasets.map(ds=>{
+        const v=ds.data[idx]; if(v==null) return null;
+        const txt = cb ? cb({dataset:ds,raw:v}) : `${ds.label}: ${v}`;
+        return {color:ds.borderColor, text:(txt||'').trim()};
+      }).filter(Boolean);
+      if (!lines.length) return;
+
+      const PAD=10, LH=17, bw=178, bh=LH*(lines.length+1)+PAD*2;
+      let tx=cx+14; if(tx+bw>W-8) tx=cx-bw-14;
+      let ty=Math.max(8,Math.min(cy-bh/2,H-bh-8));
+
+      ctx.save();
+      ctx.shadowColor='rgba(0,0,0,.15)'; ctx.shadowBlur=10;
+      ctx.fillStyle='rgba(255,255,255,.97)'; this._rr(tx,ty,bw,bh,8);
+      ctx.shadowBlur=0; ctx.strokeStyle='#e2e8f0'; ctx.lineWidth=1;
+      this._rr(tx,ty,bw,bh,8,false);
+      ctx.fillStyle='#0f172a'; ctx.font='bold 12px system-ui,sans-serif'; ctx.textAlign='left';
+      ctx.fillText(labels[idx], tx+PAD, ty+PAD+12);
+      lines.forEach((ln,i)=>{
+        const y=ty+PAD+12+(i+1)*LH;
+        ctx.fillStyle=ln.color; ctx.beginPath(); ctx.arc(tx+PAD+4,y-4,4,0,2*Math.PI); ctx.fill();
+        ctx.fillStyle='#334155'; ctx.font='11px system-ui,sans-serif';
+        ctx.fillText(ln.text, tx+PAD+14, y);
+      });
+      ctx.restore();
+    }
+
+    _legend(W, y) {
+      const { ctx, datasets } = this;
+      const IW = Math.min(115, (W-40)/datasets.length);
+      const sx  = (W - IW*datasets.length) / 2;
+      datasets.forEach((ds,i)=>{
+        const x=sx+i*IW;
+        ctx.save();
+        ctx.fillStyle=ds.borderColor; ctx.beginPath(); ctx.arc(x+6,y,5,0,2*Math.PI); ctx.fill();
+        ctx.fillStyle='#334155'; ctx.font='12px system-ui,sans-serif'; ctx.textAlign='left';
+        const nm=ds.label.length>10?ds.label.slice(0,9)+'…':ds.label;
+        ctx.fillText(nm, x+15, y+4);
+        ctx.restore();
+      });
+    }
+
+    _rr(x,y,w,h,r=4,fill=true){
+      if(w<=0||h<=0) return;
+      r=Math.min(r,w/2,h/2);
+      const {ctx}=this;
+      ctx.beginPath();
+      ctx.moveTo(x+r,y); ctx.arcTo(x+w,y,x+w,y+h,r);
+      ctx.arcTo(x+w,y+h,x,y+h,r); ctx.arcTo(x,y+h,x,y,r);
+      ctx.arcTo(x,y,x+w,y,r); ctx.closePath();
+      fill ? ctx.fill() : ctx.stroke();
+    }
+
+    _bindEvents() {
+      const PL=72, PR=18;
+      const getIdx = clientX => {
+        const r=this.canvas.getBoundingClientRect();
+        const x=(clientX-r.left)*(this._W/r.width);
+        const cw=this._W-PL-PR;
+        const colW=cw/this.labels.length;
+        const idx=Math.floor((x-PL)/colW);
+        return (idx>=0&&idx<this.labels.length)?idx:null;
+      };
+      this._mm = e => {
+        const h=getIdx(e.clientX);
+        if(h!==this._hov){this._hov=h;this._draw(h);}
+      };
+      this._ml = ()=>{this._hov=null;this._draw(null);};
+      // Touch support for iPhone
+      this._tm = e => {
+        if(e.touches.length===1){
+          e.preventDefault();
+          const h=getIdx(e.touches[0].clientX);
+          if(h!==this._hov){this._hov=h;this._draw(h);}
+        }
+      };
+      this._te = ()=>{
+        // Keep tooltip visible briefly on touch end
+        setTimeout(()=>{this._hov=null;this._draw(null);},1800);
+      };
+      this.canvas.addEventListener('mousemove',this._mm);
+      this.canvas.addEventListener('mouseleave',this._ml);
+      this.canvas.addEventListener('touchmove',this._tm,{passive:false});
+      this.canvas.addEventListener('touchend',this._te);
+    }
+  }
+  </script>
+  <style>
+    *, *::before, *::after { box-sizing: border-box; margin: 0; padding: 0; }
+    body { font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, sans-serif; background: #f1f5f9; color: #1e293b; min-height: 100vh; }
+
+    /* ── HEADER ── */
+    header { background: #fff; border-bottom: 1px solid #e2e8f0; padding: 16px 36px; display: flex; align-items: center; gap: 14px; }
+    .h-icon { font-size: 1.8rem; }
+    .h-text h1 { font-size: 1.35rem; font-weight: 800; }
+    .h-text p  { font-size: 0.78rem; color: #64748b; margin-top: 2px; }
+    .h-reset { padding: 6px 14px; border: 1px solid #e2e8f0; border-radius: 8px; background: #fff; color: #94a3b8; font-size: 0.78rem; cursor: pointer; }
+    .h-reset:hover { background: #fef2f2; color: #ef4444; border-color: #fecaca; }
+
+    .rate-strip { background: #fff; border-bottom: 1px solid #e2e8f0; padding: 8px 36px; display: flex; gap: 20px; flex-wrap: wrap; align-items: center; }
+    .rate-strip .lbl { font-size: 0.75rem; color: #64748b; }
+    .rate-strip span.r { font-size: 0.78rem; font-weight: 600; }
+    .rt1 { color: #16a34a; } .rt2 { color: #d97706; } .rt3 { color: #dc2626; }
+
+    /* ── LAYOUT ── */
+    .container { max-width: 1380px; margin: 0 auto; padding: 28px 36px 60px; }
+    .sec-label { font-size: 0.68rem; font-weight: 700; letter-spacing: 0.1em; text-transform: uppercase; color: #94a3b8; margin-bottom: 12px; }
+
+    /* ── GRAPH SECTION ── */
+    .graph-section { background: #fff; border: 1px solid #e2e8f0; border-radius: 16px; padding: 22px 24px; margin-bottom: 28px; box-shadow: 0 1px 4px rgba(0,0,0,.04); }
+    .graph-section-title { font-size: 1rem; font-weight: 700; margin-bottom: 16px; display: flex; align-items: center; gap: 8px; }
+
+    .gc-row { display: flex; align-items: center; gap: 10px; flex-wrap: wrap; margin-bottom: 12px; }
+    .gc-lbl { font-size: 0.75rem; color: #64748b; white-space: nowrap; }
+    .gc-sep { flex: 1; }
+
+    /* Apt toggle pills */
+    .apt-toggle { display: inline-flex; align-items: center; gap: 6px; padding: 5px 14px; border-radius: 99px; border: 2px solid; font-size: 0.8rem; font-weight: 600; cursor: pointer; transition: all .15s; }
+    .apt-toggle.off { background: #fff !important; color: #94a3b8 !important; border-color: #e2e8f0 !important; }
+
+    /* Toggle groups */
+    .tg { display: flex; border: 1px solid #e2e8f0; border-radius: 8px; overflow: hidden; }
+    .tg button { padding: 5px 12px; background: #fff; border: none; border-right: 1px solid #e2e8f0; font-size: 0.78rem; color: #64748b; cursor: pointer; }
+    .tg button:last-child { border-right: none; }
+    .tg button.on { background: #1e293b; color: #fff; }
+    .tg button:hover:not(.on) { background: #f8fafc; }
+
+    /* Month chips */
+    .month-chip { display: inline-block; padding: 4px 11px; border-radius: 99px; border: 1.5px solid #e2e8f0; font-size: 0.75rem; color: #64748b; cursor: pointer; transition: all .12s; user-select: none; }
+    .month-chip.on { background: #1e293b; color: #fff; border-color: #1e293b; }
+    .month-chip-wrap { display: flex; flex-wrap: wrap; gap: 6px; }
+
+    .chart-wrap { position: relative; height: 320px; margin-top: 16px; }
+    .chart-wrap canvas { display: block; width: 100% !important; }
+    .chart-empty { position: absolute; inset: 0; display: flex; flex-direction: column; align-items: center; justify-content: center; gap: 8px; color: #94a3b8; font-size: 0.88rem; text-align: center; }
+
+    /* ── OVERVIEW GRID ── */
+    .overview-grid { display: grid; grid-template-columns: repeat(auto-fill, minmax(200px, 1fr)); gap: 12px; margin-bottom: 28px; }
+    .ov-card { background: #fff; border: 1px solid #e2e8f0; border-radius: 14px; padding: 16px 18px; box-shadow: 0 1px 3px rgba(0,0,0,.04); }
+    .ov-top { display: flex; align-items: center; gap: 10px; margin-bottom: 12px; }
+    .apt-avatar { width: 34px; height: 34px; border-radius: 9px; display: flex; align-items: center; justify-content: center; color: #fff; font-weight: 800; font-size: 0.82rem; flex-shrink: 0; }
+    .ov-name { font-weight: 700; font-size: 0.95rem; }
+    .ov-meter { font-size: 0.68rem; color: #94a3b8; margin-top: 1px; }
+    .ov-stat { display: flex; justify-content: space-between; align-items: baseline; padding: 5px 0; border-bottom: 1px solid #f8fafc; }
+    .ov-stat:last-child { border-bottom: none; }
+    .ov-stat .lbl { font-size: 0.74rem; color: #64748b; }
+    .ov-stat .val { font-size: 0.85rem; font-weight: 700; }
+    .ov-stat .val.hl { color: #2563eb; }
+    .ov-empty { color: #94a3b8; font-size: 0.8rem; }
+
+    /* ── APT BLOCK ── */
+    .apt-block { background: #fff; border: 1px solid #e2e8f0; border-radius: 16px; margin-bottom: 22px; box-shadow: 0 1px 4px rgba(0,0,0,.04); overflow: hidden; }
+    .apt-block-header { display: flex; align-items: center; gap: 12px; padding: 18px 22px; border-bottom: 1px solid #f1f5f9; }
+    .apt-block-title { font-size: 1.05rem; font-weight: 800; }
+    .apt-block-sub { font-size: 0.75rem; color: #94a3b8; margin-top: 2px; }
+    .add-month-btn { margin-left: auto; padding: 7px 16px; border-radius: 8px; border: 1.5px solid; background: #fff; font-size: 0.82rem; font-weight: 600; cursor: pointer; white-space: nowrap; }
+    .add-month-btn:hover { opacity: 0.8; }
+
+    .pill-row { display: flex; gap: 10px; flex-wrap: wrap; padding: 14px 22px; border-bottom: 1px solid #f1f5f9; background: #fafcfe; }
+    .pill { background: #fff; border: 1px solid #e2e8f0; border-radius: 10px; padding: 9px 14px; min-width: 120px; }
+    .pill .p-lbl { font-size: 0.68rem; color: #94a3b8; text-transform: uppercase; letter-spacing: .04em; margin-bottom: 3px; }
+    .pill .p-val { font-size: 1rem; font-weight: 800; }
+    .pill .p-unit { font-size: 0.7rem; color: #94a3b8; }
+
+    .empty-apt { padding: 24px 22px; color: #94a3b8; font-size: 0.85rem; }
+    .empty-link { background: none; border: none; cursor: pointer; font-weight: 600; text-decoration: underline; font-size: 0.85rem; }
+
+    /* ── TABLE ── */
+    .table-wrap { overflow-x: auto; }
+    table.bt { width: 100%; border-collapse: collapse; font-size: 0.84rem; }
+    table.bt thead th { padding: 9px 14px; text-align: left; font-size: 0.68rem; font-weight: 700; text-transform: uppercase; letter-spacing: .06em; color: #64748b; background: #f8fafc; border-bottom: 2px solid #e2e8f0; white-space: nowrap; }
+    table.bt tbody td { padding: 12px 14px; border-bottom: 1px solid #f1f5f9; vertical-align: top; }
+    table.bt tbody tr:last-child td { border-bottom: none; }
+    table.bt tbody tr:hover td { background: #fafcfe; }
+    .month-cell { font-weight: 700; white-space: nowrap; }
+
+    /* Tier breakdown in table */
+    .tier-detail { display: flex; flex-direction: column; gap: 3px; }
+    .tier-line { display: flex; align-items: center; gap: 6px; font-size: 0.78rem; }
+    .tier-dot { width: 8px; height: 8px; border-radius: 50%; flex-shrink: 0; }
+    .tier-line .tkwh { width: 56px; font-weight: 600; }
+    .tier-line .trate { color: #94a3b8; font-size: 0.7rem; width: 46px; }
+    .tier-line .tcost { font-weight: 700; margin-left: 4px; }
+    .dim .tkwh, .dim .tcost { color: #cbd5e1; }
+    .tier-bar-wrap { display: flex; height: 5px; border-radius: 4px; overflow: hidden; background: #e2e8f0; margin-top: 5px; }
+
+    .cost-main { font-size: 1rem; font-weight: 800; color: #2563eb; }
+    .cost-paid { font-size: 0.72rem; color: #64748b; margin-top: 2px; }
+    .cost-diff { font-size: 0.72rem; margin-top: 1px; }
+
+    .icon-btn { width: 30px; height: 30px; border: 1px solid #e2e8f0; border-radius: 7px; background: #fff; cursor: pointer; display: flex; align-items: center; justify-content: center; font-size: 0.85rem; }
+    .icon-btn:hover { background: #f8fafc; }
+
+    /* ── MODAL ── */
+    #modal-overlay { position: fixed; inset: 0; background: rgba(15,23,42,.45); display: flex; align-items: center; justify-content: center; z-index: 1000; opacity: 0; pointer-events: none; transition: opacity .2s; }
+    #modal-overlay.open { opacity: 1; pointer-events: all; }
+    #modal { background: #fff; border-radius: 18px; width: 460px; max-width: 96vw; box-shadow: 0 20px 60px rgba(0,0,0,.18); transform: translateY(10px); transition: transform .2s; overflow: hidden; }
+    #modal-overlay.open #modal { transform: translateY(0); }
+
+    .modal-header { display: flex; align-items: center; justify-content: space-between; padding: 18px 22px 14px; border-bottom: 1px solid #f1f5f9; }
+    .modal-header h3 { font-size: 1.05rem; font-weight: 800; }
+    .modal-close { background: none; border: none; font-size: 1.4rem; color: #94a3b8; cursor: pointer; line-height: 1; }
+    .modal-close:hover { color: #1e293b; }
+
+    .modal-body { padding: 18px 22px; display: flex; flex-direction: column; gap: 14px; }
+    .form-group label { display: block; font-size: 0.78rem; font-weight: 600; color: #475569; margin-bottom: 5px; }
+    .form-group .opt { font-weight: 400; color: #94a3b8; font-size: 0.72rem; }
+    .form-group select, .form-group input { width: 100%; padding: 9px 12px; border: 1.5px solid #e2e8f0; border-radius: 8px; font-size: 0.88rem; color: #1e293b; background: #fff; outline: none; }
+    .form-group select:focus, .form-group input:focus { border-color: #2563eb; box-shadow: 0 0 0 3px #dbeafe; }
+
+    .preview-box { background: #f8fafc; border: 1px solid #e2e8f0; border-radius: 10px; padding: 12px 14px; }
+    .preview-title { font-size: 0.72rem; font-weight: 700; text-transform: uppercase; letter-spacing: .06em; color: #94a3b8; margin-bottom: 10px; }
+    .preview-placeholder { color: #94a3b8; font-size: 0.82rem; text-align: center; padding: 6px 0; }
+
+    .prev-tier { display: flex; align-items: center; gap: 8px; font-size: 0.82rem; padding: 3px 0; }
+    .prev-tier.dim { opacity: .45; }
+    .pdot { width: 9px; height: 9px; border-radius: 50%; flex-shrink: 0; }
+    .pkwh { width: 64px; font-weight: 700; }
+    .plabel { flex: 1; color: #64748b; font-size: 0.78rem; }
+    .pcost { font-weight: 700; margin-left: auto; }
+    .prev-bar { display: flex; height: 6px; border-radius: 4px; overflow: hidden; background: #e2e8f0; margin-top: 10px; }
+    .prev-total { display: flex; justify-content: space-between; align-items: center; margin-top: 10px; padding-top: 10px; border-top: 1px solid #e2e8f0; font-size: 0.82rem; color: #475569; }
+
+    .modal-error { color: #dc2626; font-size: 0.78rem; min-height: 16px; }
+    .modal-footer { display: flex; justify-content: flex-end; gap: 10px; padding: 14px 22px 18px; border-top: 1px solid #f1f5f9; }
+    .btn-secondary { padding: 8px 18px; border: 1.5px solid #e2e8f0; border-radius: 9px; background: #fff; color: #64748b; font-size: 0.84rem; font-weight: 600; cursor: pointer; }
+    .btn-secondary:hover { background: #f8fafc; }
+    .btn-primary { padding: 8px 20px; border: none; border-radius: 9px; background: #2563eb; color: #fff; font-size: 0.84rem; font-weight: 700; cursor: pointer; }
+    .btn-primary:hover { background: #1d4ed8; }
+
+    /* ── HEADER MANAGE BUTTON ── */
+    .h-manage { padding: 6px 14px; border: 1.5px solid #e2e8f0; border-radius: 8px; background: #fff; color: #475569; font-size: 0.78rem; font-weight: 600; cursor: pointer; margin-left: auto; }
+    .h-manage:hover { background: #f1f5f9; }
+    .h-reset { margin-left: 8px; }
+
+    /* ── APARTMENT MANAGER MODAL ── */
+    #apt-mgr-overlay { position: fixed; inset: 0; background: rgba(15,23,42,.45); display: flex; align-items: center; justify-content: center; z-index: 1001; opacity: 0; pointer-events: none; transition: opacity .2s; }
+    #apt-mgr-overlay.open { opacity: 1; pointer-events: all; }
+    #apt-mgr { background: #fff; border-radius: 18px; width: 500px; max-width: 96vw; max-height: 88vh; overflow-y: auto; box-shadow: 0 20px 60px rgba(0,0,0,.18); transform: translateY(10px); transition: transform .2s; }
+    #apt-mgr-overlay.open #apt-mgr { transform: translateY(0); }
+
+    .apt-mgr-row { display: flex; align-items: center; gap: 10px; padding: 10px 0; border-bottom: 1px solid #f1f5f9; }
+    .apt-mgr-row:last-child { border-bottom: none; }
+    .apt-color-inp { width: 38px; height: 38px; border: 2px solid #e2e8f0; border-radius: 8px; padding: 2px; cursor: pointer; flex-shrink: 0; background: none; }
+    .apt-name-inp  { flex: 1; min-width: 0; padding: 8px 10px; border: 1.5px solid #e2e8f0; border-radius: 8px; font-size: 0.88rem; color: #1e293b; }
+    .apt-name-inp:focus { border-color: #2563eb; outline: none; box-shadow: 0 0 0 3px #dbeafe; }
+    .apt-meter-inp { width: 120px; flex-shrink: 0; padding: 8px 10px; border: 1.5px solid #e2e8f0; border-radius: 8px; font-size: 0.8rem; color: #64748b; }
+    .apt-meter-inp:focus { border-color: #2563eb; outline: none; }
+    .apt-del-btn { width: 34px; height: 34px; flex-shrink: 0; border: 1px solid #fecaca; border-radius: 8px; background: #fff; color: #ef4444; cursor: pointer; display: flex; align-items: center; justify-content: center; font-size: 1rem; }
+    .apt-del-btn:hover { background: #fef2f2; }
+    .add-apt-row-btn { width: 100%; padding: 11px; border: 2px dashed #e2e8f0; border-radius: 10px; background: #fafcfe; color: #64748b; font-size: 0.85rem; font-weight: 600; cursor: pointer; transition: all .15s; }
+    .add-apt-row-btn:hover { border-color: #2563eb; color: #2563eb; background: #eff6ff; }
+
+    /* ── COMBINED TOTALS ── */
+    .totals-section { background: #fff; border: 1px solid #e2e8f0; border-radius: 16px; padding: 20px 24px; margin-bottom: 28px; box-shadow: 0 1px 4px rgba(0,0,0,.04); }
+    .totals-title { font-size: 1rem; font-weight: 700; margin-bottom: 4px; display: flex; align-items: center; gap: 8px; }
+    .totals-subtitle { font-size: 0.75rem; color: #94a3b8; margin-bottom: 16px; }
+    .totals-pills { display: flex; gap: 12px; flex-wrap: wrap; margin-bottom: 20px; }
+    .tot-pill { flex: 1; min-width: 140px; background: #f8fafc; border: 1px solid #e2e8f0; border-radius: 12px; padding: 14px 16px; }
+    .tot-pill.accent { background: #eff6ff; border-color: #bfdbfe; }
+    .tot-pill .tp-lbl { font-size: 0.68rem; font-weight: 700; text-transform: uppercase; letter-spacing: .06em; color: #94a3b8; margin-bottom: 4px; }
+    .tot-pill.accent .tp-lbl { color: #3b82f6; }
+    .tot-pill .tp-val { font-size: 1.4rem; font-weight: 800; color: #1e293b; }
+    .tot-pill.accent .tp-val { color: #2563eb; }
+    .tot-pill .tp-unit { font-size: 0.72rem; color: #94a3b8; margin-left: 2px; }
+
+    .totals-table-wrap { overflow-x: auto; -webkit-overflow-scrolling: touch; }
+    table.tot { width: 100%; border-collapse: collapse; font-size: 0.82rem; }
+    table.tot thead th { padding: 8px 12px; text-align: right; font-size: 0.67rem; font-weight: 700; text-transform: uppercase; letter-spacing: .06em; color: #64748b; background: #f8fafc; border-bottom: 2px solid #e2e8f0; white-space: nowrap; }
+    table.tot thead th:first-child { text-align: left; }
+    table.tot tbody td { padding: 11px 12px; border-bottom: 1px solid #f1f5f9; text-align: right; }
+    table.tot tbody td:first-child { text-align: left; font-weight: 700; white-space: nowrap; }
+    table.tot tbody tr:last-child td { border-bottom: none; }
+    table.tot tbody tr:hover td { background: #fafcfe; }
+    table.tot tfoot td { padding: 10px 12px; border-top: 2px solid #e2e8f0; text-align: right; font-weight: 800; background: #f8fafc; }
+    table.tot tfoot td:first-child { text-align: left; }
+    .apt-dot { display: inline-block; width: 8px; height: 8px; border-radius: 50%; margin-right: 5px; vertical-align: middle; }
+
+    /* ── MOBILE / iPHONE ── */
+    @media (max-width: 640px) {
+      /* Prevent iOS auto-zoom on input focus */
+      .form-group select, .form-group input { font-size: 16px !important; }
+
+      /* Header */
+      header { padding: 12px 16px; gap: 10px; flex-wrap: wrap; }
+      .h-text h1 { font-size: 1.05rem; }
+      .h-text p  { font-size: 0.72rem; }
+      .h-reset   { margin-left: auto; padding: 7px 12px; font-size: 0.75rem; }
+
+      /* Rate strip */
+      .rate-strip { padding: 8px 16px; gap: 8px 14px; }
+      .rate-strip .lbl { width: 100%; }
+
+      /* Layout */
+      .container { padding: 14px 12px 60px; }
+      .sec-label  { margin-top: 4px; }
+
+      /* Graph section */
+      .graph-section { padding: 14px 12px; border-radius: 12px; }
+      .gc-row { gap: 7px; }
+      .gc-sep { display: none; }
+      .tg button { padding: 6px 10px; font-size: 0.74rem; }
+      .apt-toggle { padding: 5px 11px; font-size: 0.76rem; }
+      .month-chip { padding: 5px 10px; font-size: 0.73rem; }
+      .chart-wrap { height: 220px; }
+
+      /* Overview grid — 2 columns on phone */
+      .overview-grid { grid-template-columns: 1fr 1fr; gap: 8px; margin-bottom: 20px; }
+      .ov-card { padding: 12px 12px; border-radius: 12px; }
+      .ov-name { font-size: 0.85rem; }
+      .apt-avatar { width: 28px; height: 28px; font-size: 0.72rem; border-radius: 7px; }
+
+      /* Apt block */
+      .apt-block { border-radius: 12px; margin-bottom: 14px; }
+      .apt-block-header { padding: 14px 14px; flex-wrap: wrap; gap: 8px; }
+      .apt-block-title { font-size: 0.95rem; }
+      .apt-block-sub   { font-size: 0.7rem; }
+      .add-month-btn   { margin-left: auto; padding: 8px 14px; font-size: 0.78rem; min-height: 36px; }
+
+      /* Pill row — horizontal scroll */
+      .pill-row { padding: 10px 12px; gap: 7px; flex-wrap: nowrap; overflow-x: auto; -webkit-overflow-scrolling: touch; scrollbar-width: none; }
+      .pill-row::-webkit-scrollbar { display: none; }
+      .pill { min-width: 100px; padding: 8px 10px; flex-shrink: 0; }
+      .pill .p-val { font-size: 0.88rem; }
+
+      /* Table */
+      .table-wrap { -webkit-overflow-scrolling: touch; }
+      table.bt { font-size: 0.78rem; min-width: 520px; }
+      table.bt thead th { padding: 8px 10px; }
+      table.bt tbody td { padding: 10px 10px; }
+      .cost-main { font-size: 0.88rem; }
+      .tier-line .tkwh { width: 48px; }
+      .tier-line .trate { width: 38px; }
+
+      /* Icon buttons — larger tap target */
+      .icon-btn { width: 38px; height: 38px; font-size: 1rem; }
+
+      /* Modal — bottom sheet on mobile */
+      #modal-overlay { align-items: flex-end; }
+      #modal {
+        width: 100% !important;
+        max-width: 100% !important;
+        border-radius: 20px 20px 0 0;
+        max-height: 92vh;
+        overflow-y: auto;
+        -webkit-overflow-scrolling: touch;
+        transform: translateY(100%) !important;
+        transition: transform .28s cubic-bezier(.32,1,.23,1);
+      }
+      #modal-overlay.open #modal { transform: translateY(0) !important; }
+      .modal-body { padding: 14px 18px; gap: 12px; }
+      .modal-footer { padding: 12px 18px 28px; } /* extra bottom for home indicator */
+      .modal-footer .btn-secondary, .modal-footer .btn-primary { flex: 1; text-align: center; padding: 12px; font-size: 0.9rem; }
+
+      /* Preview box inside modal */
+      .prev-tier { font-size: 0.78rem; }
+      .pkwh { width: 56px; }
+
+      /* Totals on mobile */
+      .totals-section { padding: 14px 12px; border-radius: 12px; }
+      .totals-pills { gap: 8px; }
+      .tot-pill { min-width: 120px; padding: 10px 12px; }
+      .tot-pill .tp-val { font-size: 1.15rem; }
+
+      /* Apt manager on mobile */
+      .h-manage { font-size: 0.72rem; padding: 7px 10px; }
+      #apt-mgr-overlay { align-items: flex-end; }
+      #apt-mgr { width: 100% !important; max-width: 100% !important; border-radius: 20px 20px 0 0; max-height: 92vh; transform: translateY(100%) !important; transition: transform .28s cubic-bezier(.32,1,.23,1); }
+      #apt-mgr-overlay.open #apt-mgr { transform: translateY(0) !important; }
+      .apt-meter-inp { width: 90px; font-size: 0.75rem; }
+      .apt-name-inp, .apt-meter-inp { font-size: 16px !important; }
+    }
+  </style>
+</head>
+<body>
+
+<header>
+  <div class="h-icon">⚡</div>
+  <div class="h-text">
+    <h1>Electric Bill Dashboard — 2026</h1>
+    <p>Jordan Electricity Distribution · Tiered Rate Analysis</p>
+  </div>
+  <button class="h-manage" onclick="openAptManager()">⚙ Apartments</button>
+  <button class="h-reset" onclick="resetToDefaults()">↺ Reset</button>
+</header>
+
+<div class="rate-strip">
+  <span class="lbl">Tiered Rates (مدعوم):</span>
+  <span class="r rt1">● Tier 1 &nbsp;1–300 kWh → 0.05 JD/kWh</span>
+  <span class="r rt2">● Tier 2 &nbsp;301–600 kWh → 0.10 JD/kWh</span>
+  <span class="r rt3">● Tier 3 &nbsp;601+ kWh → 0.20 JD/kWh</span>
+</div>
+
+<div class="container">
+
+  <!-- GRAPH SECTION -->
+  <div class="graph-section">
+    <div class="graph-section-title">📊 Consumption Graph</div>
+
+    <!-- Row 1: Apt toggles + controls -->
+    <div class="gc-row">
+      <span class="gc-lbl">Apartments:</span>
+      <div id="apt-toggles" style="display:flex;gap:7px;flex-wrap:wrap"></div>
+      <div class="gc-sep"></div>
+      <div class="tg" id="metric-tg">
+        <button onclick="setMetric('kwh')" class="on" data-m="kwh">kWh</button>
+        <button onclick="setMetric('cost')" data-m="cost">Cost (JD)</button>
+      </div>
+      <div class="tg" id="chart-type-tg">
+        <button onclick="setChartType('bar')" class="on" data-ct="bar">Bar</button>
+        <button onclick="setChartType('line')" data-ct="line">Line</button>
+      </div>
+      <div class="tg" id="bar-mode-tg">
+        <button onclick="setBarMode('grouped')" class="on" data-bm="grouped">Grouped</button>
+        <button onclick="setBarMode('stacked')" data-bm="stacked">Stacked</button>
+      </div>
+    </div>
+
+    <!-- Row 2: Month filter -->
+    <div class="gc-row" style="align-items:flex-start">
+      <span class="gc-lbl" style="margin-top:4px">Months:</span>
+      <div class="month-chip-wrap" id="month-filter"></div>
+      <button onclick="selectAllMonths()" style="font-size:0.75rem;padding:4px 10px;border:1px solid #e2e8f0;border-radius:6px;background:#fff;cursor:pointer;white-space:nowrap">All</button>
+      <button onclick="selectNoMonths()" style="font-size:0.75rem;padding:4px 10px;border:1px solid #e2e8f0;border-radius:6px;background:#fff;cursor:pointer;white-space:nowrap">None</button>
+    </div>
+
+    <div class="chart-wrap">
+      <canvas id="mainChart"></canvas>
+      <div class="chart-empty" id="chart-empty" style="display:none">Select at least one apartment and month to show the graph.</div>
+    </div>
+  </div>
+
+  <!-- COMBINED TOTALS -->
+  <div id="totals-section"></div>
+
+  <!-- OVERVIEW -->
+  <div class="sec-label">Overview — Per Apartment</div>
+  <div class="overview-grid" id="overview-grid"></div>
+
+  <!-- DETAILED SECTIONS -->
+  <div class="sec-label">Detailed Breakdown — Per Apartment</div>
+  <div id="apt-sections"></div>
+
+</div>
+
+<!-- APARTMENT MANAGER MODAL -->
+<div id="apt-mgr-overlay">
+  <div id="apt-mgr">
+    <div class="modal-header">
+      <h3>Manage Apartments</h3>
+      <button class="modal-close" onclick="closeAptManager()">×</button>
+    </div>
+    <div class="modal-body" id="apt-mgr-body" style="gap:0;padding-bottom:6px">
+      <!-- rows injected by renderAptMgrRows() -->
+    </div>
+    <div style="padding:0 22px 12px">
+      <button onclick="addAptMgrRow()" class="add-apt-row-btn">＋ Add Apartment</button>
+    </div>
+    <div class="modal-footer">
+      <button class="btn-secondary" onclick="closeAptManager()">Cancel</button>
+      <button class="btn-primary" onclick="saveAptManager()">Save Changes</button>
+    </div>
+  </div>
+</div>
+
+<!-- ADD/EDIT MODAL -->
+<div id="modal-overlay">
+  <div id="modal">
+    <div class="modal-header">
+      <h3 id="modal-title">Add Month</h3>
+      <button class="modal-close" onclick="closeModal()">×</button>
+    </div>
+    <div class="modal-body">
+      <div class="form-group">
+        <label>Apartment</label>
+        <select id="m-apt" onchange="updateTierPreview()"></select>
+      </div>
+      <div style="display:grid;grid-template-columns:1fr 1fr;gap:12px">
+        <div class="form-group">
+          <label>Month <span style="color:#dc2626">*</span></label>
+          <input type="month" id="m-month" />
+        </div>
+        <div class="form-group">
+          <label>Consumption (kWh) <span style="color:#dc2626">*</span></label>
+          <input type="number" id="m-kwh" placeholder="e.g. 850" min="1" step="1" oninput="updateTierPreview()" />
+        </div>
+      </div>
+      <div class="form-group">
+        <label>Amount Paid (JD) <span class="opt">— optional, for comparison</span></label>
+        <input type="number" id="m-paid" placeholder="e.g. 95.500" min="0" step="0.001" />
+      </div>
+      <div class="preview-box">
+        <div class="preview-title">Live Tier Breakdown</div>
+        <div id="tier-preview"><div class="preview-placeholder">Enter kWh above to see the tier breakdown</div></div>
+      </div>
+      <div class="modal-error" id="modal-error"></div>
+    </div>
+    <div class="modal-footer">
+      <button class="btn-secondary" onclick="closeModal()">Cancel</button>
+      <button class="btn-primary" onclick="saveBill()">Save Bill</button>
+    </div>
+  </div>
+</div>
+
+<script>
+// ─────────────────────────────────────────────────────────────────────────────
+// CONSTANTS
+// ─────────────────────────────────────────────────────────────────────────────
+const MN = ['Jan','Feb','Mar','Apr','May','Jun','Jul','Aug','Sep','Oct','Nov','Dec'];
+const LS_KEY = 'electric_v4';
+
+const APT_META_DEFAULTS = {
+  nasser:   { name: 'Nasser',   meter: '20242142461', color: '#2563eb' },
+  ayman:    { name: 'Ayman',    meter: '—',           color: '#d97706' },
+  jehan1:   { name: 'Jehan 1', meter: '20242142462', color: '#16a34a' },
+  jehan2:   { name: 'Jehan 2', meter: '20242142465', color: '#7c3aed' },
+  abdullah: { name: 'Abdullah', meter: '—',           color: '#e11d48' },
+};
+let APT_META = JSON.parse(JSON.stringify(APT_META_DEFAULTS));
+
+const PRESET_COLORS = ['#2563eb','#d97706','#16a34a','#7c3aed','#e11d48','#0891b2','#db2777','#65a30d','#ea580c','#6366f1'];
+
+const DEFAULTS = {
+  nasser:   [
+    { month:'2026-01', kwh:918,  paid:null },
+    { month:'2026-02', kwh:1046, paid:null },
+    { month:'2026-03', kwh:797,  paid:null },
+    { month:'2026-04', kwh:932,  paid:null },
+    { month:'2026-05', kwh:862,  paid:null },
+  ],
+  ayman: [
+    { month:'2026-02', kwh:797,  paid:91.048  },
+    { month:'2026-03', kwh:918,  paid:115.974 },
+    { month:'2026-04', kwh:1637, paid:264.088 },
+    { month:'2026-05', kwh:759,  paid:83.220  },
+  ],
+  jehan1: [
+    { month:'2026-05', kwh:620,  paid:null },
+  ],
+  jehan2: [
+    { month:'2026-03', kwh:1078, paid:null },
+    { month:'2026-04', kwh:1218, paid:null },
+    { month:'2026-05', kwh:797,  paid:null },
+  ],
+  abdullah: [
+    { month:'2026-03', kwh:491,  paid:36.091  },
+    { month:'2026-04', kwh:1011, paid:129.711 },
+    { month:'2026-05', kwh:943,  paid:116.043 },
+  ],
+};
+
+// Government miscellaneous charges per apartment
+// Formula: extra = fixed + perKwh × kWh  (added on top of consumption cost)
+// Derived from actual paid vs. consumption-cost differences:
+//   Ayman:    91.048 = 84.400 + 1.866 + 0.006×797  ✓
+//   Abdullah: 36.091 = 34.600 + 1.500 + 0.001×491  ✓
+const EXTRA_DEFAULTS = {
+  nasser:   { fixed: 1.866, perKwh: 0.006 },
+  ayman:    { fixed: 1.866, perKwh: 0.006 },
+  jehan1:   { fixed: 1.866, perKwh: 0.006 },
+  jehan2:   { fixed: 1.866, perKwh: 0.006 },
+  abdullah: { fixed: 1.500, perKwh: 0.001 },
+};
+
+// ─────────────────────────────────────────────────────────────────────────────
+// STATE
+// ─────────────────────────────────────────────────────────────────────────────
+let bills        = {};           // { aptId: [{ month, kwh, paid }] }
+let extraCharges = JSON.parse(JSON.stringify(EXTRA_DEFAULTS));
+let gApts   = new Set();   // active apts in graph — populated after loadMeta()
+let gMonths = new Set();    // active months in graph
+let gType   = 'bar';        // 'bar' | 'line'
+let gMode   = 'grouped';    // 'grouped' | 'stacked'
+let gMetric = 'kwh';        // 'kwh' | 'cost'
+let editKey = null;         // { aptId, month } when editing
+
+// ─────────────────────────────────────────────────────────────────────────────
+// STORAGE
+// ─────────────────────────────────────────────────────────────────────────────
+const LS_EXTRA = 'electric_v4_extras';
+const LS_META  = 'electric_v4_meta';
+
+function loadMeta() {
+  try {
+    const s = localStorage.getItem(LS_META);
+    APT_META = s ? JSON.parse(s) : JSON.parse(JSON.stringify(APT_META_DEFAULTS));
+  } catch { APT_META = JSON.parse(JSON.stringify(APT_META_DEFAULTS)); }
+}
+function saveMeta() { localStorage.setItem(LS_META, JSON.stringify(APT_META)); }
+
+function loadBills() {
+  try {
+    const s = localStorage.getItem(LS_KEY);
+    bills = s ? JSON.parse(s) : JSON.parse(JSON.stringify(DEFAULTS));
+  } catch { bills = JSON.parse(JSON.stringify(DEFAULTS)); }
+}
+function saveBills() { localStorage.setItem(LS_KEY, JSON.stringify(bills)); }
+
+function loadExtras() {
+  // Always start from latest EXTRA_DEFAULTS so new rates are picked up automatically
+  extraCharges = JSON.parse(JSON.stringify(EXTRA_DEFAULTS));
+}
+function saveExtras() { localStorage.setItem(LS_EXTRA, JSON.stringify(extraCharges)); }
+
+function resetToDefaults() {
+  if (!confirm('Reset everything back to defaults? All custom apartments, bills, and names will be removed.')) return;
+  localStorage.removeItem(LS_KEY);
+  localStorage.removeItem(LS_EXTRA);
+  localStorage.removeItem(LS_META);
+  APT_META     = JSON.parse(JSON.stringify(APT_META_DEFAULTS));
+  bills        = JSON.parse(JSON.stringify(DEFAULTS));
+  extraCharges = JSON.parse(JSON.stringify(EXTRA_DEFAULTS));
+  gApts        = new Set(Object.keys(APT_META));
+  refreshAll();
+}
+
+// ─────────────────────────────────────────────────────────────────────────────
+// TIER CALC
+// ─────────────────────────────────────────────────────────────────────────────
+function tiers(kwh) {
+  const t1k = Math.min(kwh, 300);
+  const t2k = Math.max(0, Math.min(kwh - 300, 300));
+  const t3k = Math.max(0, kwh - 600);
+  const t1c = +(t1k * 0.05).toFixed(3);
+  const t2c = +(t2k * 0.10).toFixed(3);
+  const t3c = +(t3k * 0.20).toFixed(3);
+  return { t1k, t2k, t3k, t1c, t2c, t3c, total: +(t1c + t2c + t3c).toFixed(3) };
+}
+
+// Government extra charge for a given apartment + kWh
+function calcExtra(aptId, kwh) {
+  const e = extraCharges[aptId] || { fixed: 0, perKwh: 0 };
+  return +(e.fixed + e.perKwh * kwh).toFixed(3);
+}
+// Grand total = consumption tiers + govt charges
+function calcGrand(aptId, kwh) {
+  return +(tiers(kwh).total + calcExtra(aptId, kwh)).toFixed(3);
+}
+
+// ─────────────────────────────────────────────────────────────────────────────
+// UTILS
+// ─────────────────────────────────────────────────────────────────────────────
+function fmtM(ym) { const [y,m] = ym.split('-'); return `${MN[+m-1]} ${y}`; }
+function f(n, d=3) { return (+n).toFixed(d); }
+function avg(arr) { return arr.length ? arr.reduce((s,v)=>s+v,0)/arr.length : 0; }
+function initials(n) { return n.split(' ').map(w=>w[0]).join('').toUpperCase().slice(0,2); }
+
+function allMonths() {
+  const s = new Set();
+  Object.values(bills).forEach(arr => arr.forEach(b => s.add(b.month)));
+  return [...s].sort();
+}
+
+function getBill(aptId, month) { return (bills[aptId]||[]).find(b=>b.month===month); }
+
+// ─────────────────────────────────────────────────────────────────────────────
+// GRAPH CONTROLS
+// ─────────────────────────────────────────────────────────────────────────────
+function setMetric(m) {
+  gMetric = m;
+  document.querySelectorAll('#metric-tg button').forEach(b => b.classList.toggle('on', b.dataset.m === m));
+  renderChart();
+}
+function setChartType(t) {
+  gType = t;
+  document.querySelectorAll('#chart-type-tg button').forEach(b => b.classList.toggle('on', b.dataset.ct === t));
+  document.getElementById('bar-mode-tg').style.display = t === 'bar' ? 'flex' : 'none';
+  renderChart();
+}
+function setBarMode(m) {
+  gMode = m;
+  document.querySelectorAll('#bar-mode-tg button').forEach(b => b.classList.toggle('on', b.dataset.bm === m));
+  renderChart();
+}
+function toggleApt(id) {
+  if (gApts.has(id)) { if (gApts.size > 1) gApts.delete(id); }
+  else gApts.add(id);
+  renderAptToggles();
+  renderTotals();
+  renderChart();
+}
+function toggleMonth(m) {
+  if (gMonths.has(m)) { if (gMonths.size > 1) gMonths.delete(m); }
+  else gMonths.add(m);
+  renderMonthFilter();
+  renderTotals();
+  renderChart();
+}
+function selectAllMonths()  { allMonths().forEach(m => gMonths.add(m)); renderMonthFilter(); renderTotals(); renderChart(); }
+function selectNoMonths()   { const f = allMonths()[0]; gMonths = new Set(f ? [f] : []); renderMonthFilter(); renderTotals(); renderChart(); }
+
+function renderAptToggles() {
+  document.getElementById('apt-toggles').innerHTML = Object.entries(APT_META).map(([id, meta]) => {
+    const on = gApts.has(id);
+    const sty = on ? `background:${meta.color};border-color:${meta.color};color:#fff` : `background:#fff;border-color:#e2e8f0;color:#94a3b8`;
+    return `<button class="apt-toggle" style="${sty}" onclick="toggleApt('${id}')">${meta.name}</button>`;
+  }).join('');
+}
+
+function renderMonthFilter() {
+  const months = allMonths();
+  if (!months.length) { document.getElementById('month-filter').innerHTML = '<span style="color:#94a3b8;font-size:0.78rem">No data yet</span>'; return; }
+  document.getElementById('month-filter').innerHTML = months.map(m =>
+    `<span class="month-chip ${gMonths.has(m) ? 'on' : ''}" onclick="toggleMonth('${m}')">${fmtM(m)}</span>`
+  ).join('');
+}
+
+// ─────────────────────────────────────────────────────────────────────────────
+// CHART
+// ─────────────────────────────────────────────────────────────────────────────
+let chartInst = null;
+
+function showChartError(msg) {
+  const canvas = document.getElementById('mainChart');
+  const empty  = document.getElementById('chart-empty');
+  canvas.style.display = 'none';
+  empty.style.display  = 'flex';
+  empty.innerHTML = `<span style="font-size:1.5rem">⚠️</span><span>${msg}</span>`;
+}
+
+function renderChart() {
+  const canvas = document.getElementById('mainChart');
+  const empty  = document.getElementById('chart-empty');
+
+  const months = allMonths().filter(m => gMonths.has(m));
+  const apts   = Object.keys(APT_META).filter(id => gApts.has(id));
+
+  if (!months.length || !apts.length) {
+    empty.innerHTML = 'Select at least one apartment and one month to show the graph.';
+    empty.style.display = 'flex';
+    canvas.style.display = 'none';
+    if (chartInst) { chartInst.destroy(); chartInst = null; }
+    return;
+  }
+
+  empty.style.display  = 'none';
+  canvas.style.display = 'block';
+
+  const isStacked = gType === 'bar' && gMode === 'stacked';
+
+  const datasets = apts.map(id => {
+    const meta = APT_META[id];
+    const data = months.map(m => {
+      const b = getBill(id, m);
+      if (!b) return null;
+      return gMetric === 'kwh' ? b.kwh : calcGrand(id, b.kwh);
+    });
+    return {
+      label: meta.name,
+      data,
+      backgroundColor: meta.color + (gType === 'bar' ? 'bb' : '33'),
+      borderColor: meta.color,
+    };
+  });
+
+  try {
+    if (chartInst) { chartInst.destroy(); chartInst = null; }
+    chartInst = new SimpleChart(canvas, {
+      type: gType,
+      data: { labels: months.map(fmtM), datasets },
+      options: {
+        scales: {
+          y: {
+            stacked: isStacked,
+            ticks: {
+              callback: v => gMetric === 'kwh'
+                ? (v >= 1000 ? (v/1000).toFixed(1)+'k' : Math.round(v)) + ' kWh'
+                : Math.round(v) + ' JD'
+            }
+          }
+        },
+        plugins: {
+          tooltip: {
+            callbacks: {
+              label: ctx => {
+                if (ctx.raw == null) return null;
+                const u = gMetric === 'kwh' ? ' kWh' : ' JD';
+                const d = gMetric === 'kwh' ? 0 : 3;
+                return ` ${ctx.dataset.label}: ${(+ctx.raw).toFixed(d)}${u}`;
+              }
+            }
+          }
+        }
+      }
+    });
+  } catch(err) {
+    showChartError('Chart error: ' + err.message);
+    console.error(err);
+  }
+}
+
+// ─────────────────────────────────────────────────────────────────────────────
+// MODAL
+// ─────────────────────────────────────────────────────────────────────────────
+function openModal(aptId, month) {
+  editKey = month ? { aptId, month } : null;
+  const overlay = document.getElementById('modal-overlay');
+  document.getElementById('modal-title').textContent = month ? 'Edit Month' : 'Add Month';
+  document.getElementById('modal-error').textContent = '';
+
+  // Populate apt select
+  document.getElementById('m-apt').innerHTML = Object.entries(APT_META)
+    .map(([id, m]) => `<option value="${id}" ${id === aptId ? 'selected':''}>${m.name}</option>`).join('');
+
+  if (month) {
+    const b = getBill(aptId, month);
+    document.getElementById('m-month').value = month;
+    document.getElementById('m-kwh').value   = b ? b.kwh : '';
+    document.getElementById('m-paid').value  = (b && b.paid != null) ? b.paid : '';
+  } else {
+    document.getElementById('m-month').value = '';
+    document.getElementById('m-kwh').value   = '';
+    document.getElementById('m-paid').value  = '';
+  }
+  updateTierPreview();
+  overlay.classList.add('open');
+  setTimeout(() => document.getElementById('m-kwh').focus(), 150);
+}
+
+function closeModal() {
+  document.getElementById('modal-overlay').classList.remove('open');
+  editKey = null;
+}
+
+function updateTierPreview() {
+  const kwh   = parseFloat(document.getElementById('m-kwh').value) || 0;
+  const aptId = document.getElementById('m-apt').value;
+  const box   = document.getElementById('tier-preview');
+  if (!kwh || kwh <= 0) { box.innerHTML = '<div class="preview-placeholder">Enter kWh above to see the tier breakdown</div>'; return; }
+  const c     = tiers(kwh);
+  const extra = calcExtra(aptId, kwh);
+  const grand = calcGrand(aptId, kwh);
+  const e     = extraCharges[aptId] || { fixed: 0, perKwh: 0 };
+  const hasExtra = extra > 0;
+
+  const p1 = (c.t1k/kwh*100).toFixed(1);
+  const p2 = (c.t2k/kwh*100).toFixed(1);
+  const p3 = (c.t3k/kwh*100).toFixed(1);
+
+  const tierRow = (dot, label, kwh_, cost, active) => `
+    <div class="prev-tier ${active?'':'dim'}">
+      <span class="pdot" style="background:${dot}"></span>
+      <span class="pkwh">${kwh_} kWh</span>
+      <span class="plabel">${label}</span>
+      <span class="pcost" style="color:${active?dot:'#94a3b8'}">${active ? f(cost) + ' JD' : '—'}</span>
+    </div>`;
+
+  const extraRow = hasExtra ? `
+    <div style="display:flex;justify-content:space-between;align-items:center;font-size:0.78rem;padding:3px 0;color:#64748b;border-top:1px dashed #e2e8f0;margin-top:6px;padding-top:6px">
+      <span>⊕ Govt charges &nbsp;<span style="color:#94a3b8;font-size:0.71rem">(${f(e.fixed,3)} fixed + ${e.perKwh} × ${kwh} kWh)</span></span>
+      <span style="font-weight:700;color:#7c3aed">+${f(extra)} JD</span>
+    </div>` : '';
+
+  box.innerHTML = `
+    ${tierRow('#16a34a','Tier 1  (1–300 × 0.05)', c.t1k, c.t1c, true)}
+    ${tierRow('#d97706','Tier 2  (301–600 × 0.10)', c.t2k, c.t2c, c.t2k > 0)}
+    ${tierRow('#dc2626','Tier 3  (601+ × 0.20)', c.t3k, c.t3c, c.t3k > 0)}
+    <div class="prev-bar">
+      <div style="width:${p1}%;background:#16a34a;height:100%"></div>
+      <div style="width:${p2}%;background:#d97706;height:100%"></div>
+      <div style="width:${p3}%;background:#dc2626;height:100%"></div>
+    </div>
+    <div class="prev-total">
+      <span>Consumption Cost</span>
+      <span style="color:#2563eb;font-weight:700">${f(c.total)} JD</span>
+    </div>
+    ${extraRow}
+    ${hasExtra ? `<div class="prev-total" style="margin-top:4px;padding-top:4px;border-top:2px solid #e2e8f0">
+      <span style="font-weight:700">Expected Total Bill</span>
+      <strong style="color:#2563eb;font-size:1.08rem">${f(grand)} JD</strong>
+    </div>` : `<div class="prev-total" style="margin-top:4px;padding-top:4px;border-top:2px solid #e2e8f0">
+      <span style="font-weight:700">Expected Total Bill</span>
+      <strong style="color:#2563eb;font-size:1.08rem">${f(grand)} JD</strong>
+    </div>`}`;
+}
+
+function saveBill() {
+  const aptId = document.getElementById('m-apt').value;
+  const month = document.getElementById('m-month').value;
+  const kwh   = parseFloat(document.getElementById('m-kwh').value);
+  const paidV = document.getElementById('m-paid').value.trim();
+  const paid  = paidV !== '' ? parseFloat(paidV) : null;
+  const errEl = document.getElementById('modal-error');
+
+  if (!month) { errEl.textContent = 'Please select a month.'; return; }
+  if (!kwh || kwh <= 0) { errEl.textContent = 'Please enter a valid consumption (kWh > 0).'; return; }
+  errEl.textContent = '';
+
+  if (!bills[aptId]) bills[aptId] = [];
+  const arr = bills[aptId];
+  const idx = arr.findIndex(b => b.month === month);
+  if (idx >= 0) arr[idx] = { month, kwh, paid };
+  else { arr.push({ month, kwh, paid }); arr.sort((a,b) => a.month.localeCompare(b.month)); }
+
+  saveBills();
+  gMonths.add(month);
+  closeModal();
+  refreshAll();
+}
+
+function deleteBill(aptId, month) {
+  if (!confirm(`Delete ${fmtM(month)} from ${APT_META[aptId].name}?`)) return;
+  const arr = bills[aptId] || [];
+  const idx = arr.findIndex(b => b.month === month);
+  if (idx >= 0) arr.splice(idx, 1);
+  saveBills();
+  // Remove from gMonths if no apt has that month anymore
+  const still = Object.values(bills).some(a => a.find(b => b.month === month));
+  if (!still) gMonths.delete(month);
+  refreshAll();
+}
+
+// ─────────────────────────────────────────────────────────────────────────────
+// OVERVIEW CARDS
+// ─────────────────────────────────────────────────────────────────────────────
+function renderOverview() {
+  document.getElementById('overview-grid').innerHTML = Object.entries(APT_META).map(([id, meta]) => {
+    const arr   = bills[id] || [];
+    const costs = arr.map(b => calcGrand(id, b.kwh));
+    const kArr  = arr.map(b => b.kwh);
+    const avgK  = avg(kArr), avgC = avg(costs);
+    const totC  = costs.reduce((s,v)=>s+v,0);
+    const last  = arr[arr.length-1];
+
+    return `<div class="ov-card">
+      <div class="ov-top">
+        <div class="apt-avatar" style="background:${meta.color}">${initials(meta.name)}</div>
+        <div><div class="ov-name">${meta.name}</div><div class="ov-meter">${meta.meter !== '—' ? meta.meter : '—'}</div></div>
+      </div>
+      ${arr.length === 0 ? '<div class="ov-empty">No data yet</div>' : `
+        <div class="ov-stat"><span class="lbl">Months on file</span><span class="val">${arr.length}</span></div>
+        <div class="ov-stat"><span class="lbl">Avg consumption</span><span class="val">${f(avgK,0)} kWh</span></div>
+        <div class="ov-stat"><span class="lbl">Avg monthly cost</span><span class="val hl">${f(avgC)} JD</span></div>
+        <div class="ov-stat"><span class="lbl">Total cost (est.)</span><span class="val">${f(totC)} JD</span></div>
+        ${last ? `<div class="ov-stat"><span class="lbl">Latest (${fmtM(last.month)})</span><span class="val hl">${f(calcGrand(id, last.kwh))} JD</span></div>` : ''}
+      `}
+    </div>`;
+  }).join('');
+}
+
+// ─────────────────────────────────────────────────────────────────────────────
+// APARTMENT SECTIONS
+// ─────────────────────────────────────────────────────────────────────────────
+function renderAptSections() {
+  document.getElementById('apt-sections').innerHTML = Object.entries(APT_META).map(([id, meta]) => {
+    const arr  = bills[id] || [];
+    const kArr = arr.map(b => b.kwh);
+    const cArr = arr.map(b => calcGrand(id, b.kwh));
+    const avgK = avg(kArr), avgC = avg(cArr);
+    const totK = kArr.reduce((s,v)=>s+v,0), totC = cArr.reduce((s,v)=>s+v,0);
+
+    const rows = arr.map(bill => {
+      const c     = tiers(bill.kwh);
+      const extra = calcExtra(id, bill.kwh);
+      const grand = calcGrand(id, bill.kwh);
+      const hasExtra = extra > 0;
+      const p1 = (c.t1k/bill.kwh*100).toFixed(0);
+      const p2 = (c.t2k/bill.kwh*100).toFixed(0);
+      const p3 = (c.t3k/bill.kwh*100).toFixed(0);
+      // Compare paid vs grand total (incl. govt charges)
+      const diff = bill.paid != null ? +(bill.paid - grand).toFixed(3) : null;
+      const diffStr   = diff !== null ? (diff >= 0 ? `+${f(diff)}` : `${f(diff)}`) + ' JD' : null;
+      const diffColor = diff !== null ? (Math.abs(diff) < 0.02 ? '#94a3b8' : diff > 0 ? '#dc2626' : '#16a34a') : '';
+      const diffLabel = diff !== null ? (Math.abs(diff) < 0.02 ? '✓ match' : diff > 0 ? '▲ overpaid' : '▼ underpaid') : '';
+
+      return `<tr>
+        <td class="month-cell">${fmtM(bill.month)}</td>
+        <td style="font-weight:700;white-space:nowrap">${bill.kwh.toLocaleString()} kWh</td>
+        <td>
+          <div class="tier-detail">
+            <div class="tier-line">
+              <div class="tier-dot" style="background:#16a34a"></div>
+              <span class="tkwh">${c.t1k} kWh</span><span class="trate">×0.05</span>
+              <span class="tcost" style="color:#16a34a">${f(c.t1c)} JD</span>
+            </div>
+            <div class="tier-line ${c.t2k===0?'dim':''}">
+              <div class="tier-dot" style="background:${c.t2k>0?'#d97706':'#e2e8f0'}"></div>
+              <span class="tkwh">${c.t2k} kWh</span><span class="trate">×0.10</span>
+              <span class="tcost" style="color:${c.t2k>0?'#d97706':'#cbd5e1'}">${c.t2k>0?f(c.t2c)+' JD':'—'}</span>
+            </div>
+            <div class="tier-line ${c.t3k===0?'dim':''}">
+              <div class="tier-dot" style="background:${c.t3k>0?'#dc2626':'#e2e8f0'}"></div>
+              <span class="tkwh">${c.t3k} kWh</span><span class="trate">×0.20</span>
+              <span class="tcost" style="color:${c.t3k>0?'#dc2626':'#cbd5e1'}">${c.t3k>0?f(c.t3c)+' JD':'—'}</span>
+            </div>
+            <div class="tier-bar-wrap">
+              <div style="width:${p1}%;background:#16a34a;height:100%"></div>
+              <div style="width:${p2}%;background:#d97706;height:100%"></div>
+              <div style="width:${p3}%;background:#dc2626;height:100%"></div>
+            </div>
+          </div>
+        </td>
+        <td>
+          <div class="cost-main">${f(grand)} JD</div>
+          ${hasExtra
+            ? `<div class="cost-paid" style="color:#64748b">Consumption: ${f(c.total)} JD</div>
+               <div class="cost-paid" style="color:#7c3aed">Govt charges: +${f(extra)} JD</div>`
+            : ''}
+          ${bill.paid != null
+            ? `<div class="cost-paid">Paid: ${f(bill.paid)} JD</div>
+               <div class="cost-diff" style="color:${diffColor}">${diffStr} &nbsp;<span style="opacity:.7">${diffLabel}</span></div>`
+            : `<div class="cost-paid" style="color:#cbd5e1">No paid amount</div>`}
+        </td>
+        <td style="white-space:nowrap">
+          <div style="display:flex;gap:5px">
+            <button class="icon-btn" onclick="openModal('${id}','${bill.month}')" title="Edit">✏️</button>
+            <button class="icon-btn" onclick="deleteBill('${id}','${bill.month}')" title="Delete">🗑️</button>
+          </div>
+        </td>
+      </tr>`;
+    }).join('');
+
+    return `<div class="apt-block" id="apt-${id}">
+      <div class="apt-block-header">
+        <div class="apt-avatar" style="background:${meta.color}">${initials(meta.name)}</div>
+        <div style="flex:1">
+          <div class="apt-block-title">${meta.name}</div>
+          <div class="apt-block-sub">Meter: ${meta.meter} &nbsp;·&nbsp; ${arr.length} month${arr.length!==1?'s':''}</div>
+        </div>
+        <button class="add-month-btn" onclick="openModal('${id}')" style="border-color:${meta.color};color:${meta.color}">+ Add Month</button>
+      </div>
+      ${arr.length > 0 ? `
+      <div class="pill-row">
+        <div class="pill"><div class="p-lbl">Avg kWh</div><div class="p-val">${f(avgK,0)}<span class="p-unit"> kWh</span></div></div>
+        <div class="pill"><div class="p-lbl">Avg Cost</div><div class="p-val">${f(avgC)}<span class="p-unit"> JD</span></div></div>
+        <div class="pill"><div class="p-lbl">Total kWh</div><div class="p-val">${totK.toLocaleString()}<span class="p-unit"> kWh</span></div></div>
+        <div class="pill"><div class="p-lbl">Total Cost</div><div class="p-val">${f(totC)}<span class="p-unit"> JD</span></div></div>
+        <div class="pill"><div class="p-lbl">Peak</div><div class="p-val">${Math.max(...kArr).toLocaleString()}<span class="p-unit"> kWh</span></div></div>
+        <div class="pill"><div class="p-lbl">Lowest</div><div class="p-val">${Math.min(...kArr).toLocaleString()}<span class="p-unit"> kWh</span></div></div>
+      </div>
+      <div class="table-wrap">
+        <table class="bt">
+          <thead><tr>
+            <th>Month</th><th>Total kWh</th><th>Tier Breakdown</th><th>Cost</th><th style="width:66px"></th>
+          </tr></thead>
+          <tbody>${rows}</tbody>
+        </table>
+      </div>` : `<div class="empty-apt">No months recorded yet.
+        <button class="empty-link" onclick="openModal('${id}')" style="color:${meta.color}">Add one →</button>
+      </div>`}
+    </div>`;
+  }).join('');
+}
+
+// ─────────────────────────────────────────────────────────────────────────────
+// COMBINED TOTALS
+// ─────────────────────────────────────────────────────────────────────────────
+function renderTotals() {
+  const el = document.getElementById('totals-section');
+  const months = allMonths().filter(m => gMonths.has(m));
+  const apts   = Object.keys(APT_META).filter(id => gApts.has(id));
+
+  if (!months.length || !apts.length) { el.innerHTML = ''; return; }
+
+  // Build per-month rows
+  let grandKwh = 0, grandCost = 0;
+  const rowData = months.map(m => {
+    let mKwh = 0, mCost = 0;
+    const aptCols = apts.map(id => {
+      const b = getBill(id, m);
+      if (!b) return { kwh: null, cost: null };
+      mKwh  += b.kwh;
+      mCost += calcGrand(id, b.kwh);
+      return { kwh: b.kwh, cost: calcGrand(id, b.kwh) };
+    });
+    grandKwh  += mKwh;
+    grandCost += mCost;
+    return { month: m, aptCols, mKwh, mCost };
+  });
+
+  const avgKwh  = grandKwh  / months.length;
+  const avgCost = grandCost / months.length;
+
+  // Apt header cells
+  const aptHeaders = apts.map(id =>
+    `<th><span class="apt-dot" style="background:${APT_META[id].color}"></span>${APT_META[id].name}</th>`
+  ).join('');
+
+  // Body rows
+  const bodyRows = rowData.map(r => {
+    const aptCells = r.aptCols.map(col =>
+      col.kwh !== null
+        ? `<td>${col.kwh.toLocaleString()} kWh<br><span style="color:#2563eb;font-weight:700">${f(col.cost)} JD</span></td>`
+        : `<td style="color:#e2e8f0">—</td>`
+    ).join('');
+    return `<tr>
+      <td>${fmtM(r.month)}</td>
+      ${aptCells}
+      <td style="font-weight:700">${r.mKwh.toLocaleString()} kWh</td>
+      <td style="color:#2563eb;font-weight:800">${f(r.mCost)} JD</td>
+    </tr>`;
+  }).join('');
+
+  // Footer totals
+  const footAptCells = apts.map(id => {
+    const aptMonths = months.filter(m => getBill(id, m));
+    const totKwh  = aptMonths.reduce((s, m) => s + getBill(id, m).kwh, 0);
+    const totCost = aptMonths.reduce((s, m) => s + calcGrand(id, getBill(id, m).kwh), 0);
+    return aptMonths.length
+      ? `<td>${totKwh.toLocaleString()} kWh<br><span style="color:#2563eb">${f(totCost)} JD</span></td>`
+      : `<td style="color:#e2e8f0">—</td>`;
+  }).join('');
+
+  const aptLabel = apts.length === Object.keys(APT_META).length ? 'all apartments' : `${apts.length} apartment${apts.length !== 1 ? 's' : ''}`;
+  const monLabel = months.length === allMonths().length ? 'all months' : `${months.length} month${months.length !== 1 ? 's' : ''}`;
+
+  el.innerHTML = `
+  <div class="sec-label">Combined Totals</div>
+  <div class="totals-section">
+    <div class="totals-title">🔢 Combined — ${aptLabel}, ${monLabel}</div>
+    <div class="totals-subtitle">Use the apartment toggles and month filter in the graph above to change the selection.</div>
+    <div class="totals-pills">
+      <div class="tot-pill accent">
+        <div class="tp-lbl">Total Consumption</div>
+        <div class="tp-val">${grandKwh.toLocaleString()}<span class="tp-unit"> kWh</span></div>
+      </div>
+      <div class="tot-pill accent">
+        <div class="tp-lbl">Total Cost (incl. charges)</div>
+        <div class="tp-val">${f(grandCost)}<span class="tp-unit"> JD</span></div>
+      </div>
+      <div class="tot-pill">
+        <div class="tp-lbl">Avg per Month — kWh</div>
+        <div class="tp-val">${f(avgKwh, 0)}<span class="tp-unit"> kWh</span></div>
+      </div>
+      <div class="tot-pill">
+        <div class="tp-lbl">Avg per Month — Cost</div>
+        <div class="tp-val">${f(avgCost)}<span class="tp-unit"> JD</span></div>
+      </div>
+    </div>
+    <div class="totals-table-wrap">
+      <table class="tot">
+        <thead><tr>
+          <th>Month</th>${aptHeaders}<th>Total kWh</th><th>Total Cost</th>
+        </tr></thead>
+        <tbody>${bodyRows}</tbody>
+        <tfoot><tr>
+          <td>Grand Total</td>${footAptCells}
+          <td>${grandKwh.toLocaleString()} kWh</td>
+          <td style="color:#2563eb">${f(grandCost)} JD</td>
+        </tr></tfoot>
+      </table>
+    </div>
+  </div>`;
+}
+
+// ─────────────────────────────────────────────────────────────────────────────
+// APARTMENT MANAGER
+// ─────────────────────────────────────────────────────────────────────────────
+function openAptManager() {
+  renderAptMgrRows();
+  document.getElementById('apt-mgr-overlay').classList.add('open');
+}
+function closeAptManager() {
+  document.getElementById('apt-mgr-overlay').classList.remove('open');
+}
+
+function renderAptMgrRows() {
+  const body = document.getElementById('apt-mgr-body');
+  body.innerHTML = Object.entries(APT_META).map(([id, meta]) => aptMgrRowHTML(id, meta)).join('');
+}
+
+function aptMgrRowHTML(id, meta) {
+  const meterVal = (meta.meter && meta.meter !== '—') ? meta.meter : '';
+  return `<div class="apt-mgr-row" data-id="${id}">
+    <input type="color" class="apt-color-inp" value="${meta.color}" title="Pick color">
+    <input type="text"  class="apt-name-inp"  value="${meta.name}"  placeholder="Name (required)">
+    <input type="text"  class="apt-meter-inp" value="${meterVal}"   placeholder="Meter # (opt.)">
+    <button class="apt-del-btn" onclick="confirmDeleteApt(this)" title="Remove apartment">🗑</button>
+  </div>`;
+}
+
+function addAptMgrRow() {
+  const body = document.getElementById('apt-mgr-body');
+  const newId = 'apt_' + Date.now();
+  const color = PRESET_COLORS[Object.keys(APT_META).length % PRESET_COLORS.length];
+  const div = document.createElement('div');
+  div.innerHTML = aptMgrRowHTML(newId, { name: '', color, meter: '' });
+  body.appendChild(div.firstElementChild);
+  body.lastElementChild.querySelector('.apt-name-inp').focus();
+}
+
+function confirmDeleteApt(btn) {
+  const row   = btn.closest('.apt-mgr-row');
+  const id    = row.dataset.id;
+  const name  = row.querySelector('.apt-name-inp').value || 'this apartment';
+  const count = (bills[id] || []).length;
+  const warn  = count > 0 ? ` This will also delete ${count} saved bill${count !== 1 ? 's' : ''}.` : '';
+  if (!confirm(`Remove "${name}"?${warn}`)) return;
+  row.remove();
+}
+
+function saveAptManager() {
+  const rows = document.querySelectorAll('#apt-mgr-body .apt-mgr-row');
+  const newMeta = {};
+  let hasError = false;
+
+  rows.forEach(row => {
+    const id    = row.dataset.id;
+    const name  = row.querySelector('.apt-name-inp').value.trim();
+    const color = row.querySelector('.apt-color-inp').value;
+    const meter = row.querySelector('.apt-meter-inp').value.trim() || '—';
+    if (!name) { row.querySelector('.apt-name-inp').style.borderColor = '#dc2626'; hasError = true; return; }
+    row.querySelector('.apt-name-inp').style.borderColor = '';
+    newMeta[id] = { name, color, meter };
+  });
+
+  if (hasError) { alert('Please fill in a name for every apartment.'); return; }
+  if (Object.keys(newMeta).length === 0) { alert('You need at least one apartment.'); return; }
+
+  // Remove bills for deleted apartments
+  const removed = Object.keys(APT_META).filter(id => !newMeta[id]);
+  removed.forEach(id => { delete bills[id]; gApts.delete(id); });
+
+  // Add new apartments to gApts
+  Object.keys(newMeta).forEach(id => { if (!APT_META[id]) gApts.add(id); });
+
+  APT_META = newMeta;
+  saveMeta();
+  saveBills();
+  closeAptManager();
+  refreshAll();
+}
+
+// ─────────────────────────────────────────────────────────────────────────────
+// REFRESH ALL
+// ─────────────────────────────────────────────────────────────────────────────
+function refreshAll() {
+  // Sync new months into gMonths
+  allMonths().forEach(m => { if (!gMonths.has(m)) gMonths.add(m); });
+  renderAptToggles();
+  renderMonthFilter();
+  renderTotals();
+  renderOverview();
+  renderAptSections();
+  renderChart();
+}
+
+// ─────────────────────────────────────────────────────────────────────────────
+// INIT
+// ─────────────────────────────────────────────────────────────────────────────
+loadMeta();
+loadBills();
+loadExtras();
+gApts = new Set(Object.keys(APT_META));
+allMonths().forEach(m => gMonths.add(m));
+document.getElementById('modal-overlay').addEventListener('click', e => {
+  if (e.target === document.getElementById('modal-overlay')) closeModal();
+});
+document.getElementById('apt-mgr-overlay').addEventListener('click', e => {
+  if (e.target === document.getElementById('apt-mgr-overlay')) closeAptManager();
+});
+refreshAll();
+</script>
+</body>
+</html>
